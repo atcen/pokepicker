@@ -11,7 +11,7 @@ export const ONBOARDING_BATCHES: OnboardingBatch[] = [
   {
     id: 'kanto_starters',
     label: 'Sortiere die Kanto-Starter',
-    pokemonIds: [1, 4, 7, 2, 5, 8],
+    pokemonIds: [1, 4, 7],
     targetFeatures: ['types', 'evoStage', 'generation'],
   },
   {
@@ -41,7 +41,7 @@ export const ONBOARDING_BATCHES: OnboardingBatch[] = [
   {
     id: 'johto_starters',
     label: 'Sortiere die Johto-Starter',
-    pokemonIds: [152, 155, 158, 153, 156, 159],
+    pokemonIds: [152, 155, 158],
     targetFeatures: ['generation', 'types', 'evoStage'],
   },
   // Batches 7 & 8 (Index 6 & 7): mixed mode — 4 scripted + 2 freie Items
