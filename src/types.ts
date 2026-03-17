@@ -41,6 +41,14 @@ export type PairingMode =
   | 'challenge'    // Aufsteiger mit hohem sigma gegen etablierte Top-Items
   | 'onboarding';  // Gescriptete Batches (Phase 1)
 
+export interface ClusterCentroidRow {
+  id: number;
+  updated_at: number;
+  centroid: FeatureWeights;
+  member_count: number;
+  label: string | null;
+}
+
 export interface AppState {
   ratings: Record<number, Rating>;
   weights: FeatureWeights;
@@ -52,4 +60,9 @@ export interface AppState {
   weightHistory: FeatureWeights[];
   pairingMode: PairingMode;
   modeAutoSwitch: boolean;
+  clusterMatch?: {
+    clusterId: number;
+    similarity: number;
+    weights: FeatureWeights;
+  };
 }

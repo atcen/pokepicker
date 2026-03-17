@@ -45,3 +45,16 @@ export const ONBOARDING_COUNT = ONBOARDING_BATCHES.length;
 
 // Kein mixed mode — alle Batches sind vollständig geskriptet
 export const MIXED_MODE_START_INDEX = ONBOARDING_COUNT;
+
+/**
+ * Returns the number of onboarding batches to show based on cluster-match
+ * similarity. A strong match (similarity ≥ 0.8) reduces onboarding to 4
+ * batches so familiar users reach free-mode quickly.
+ */
+export function getOnboardingCount(similarity: number | null): number {
+  if (similarity === null) return ONBOARDING_COUNT;      // no cluster data
+  if (similarity >= 0.8) return 4;                       // very strong match
+  if (similarity >= 0.6) return 8;                       // moderate match
+  if (similarity >= 0.4) return 14;                      // weak match
+  return ONBOARDING_COUNT;                               // no meaningful match
+}

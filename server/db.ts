@@ -77,4 +77,20 @@ export const stmts = {
       (SELECT count FROM pairwise_wins WHERE winner_id = ?) w,
       (SELECT count FROM pairwise_wins WHERE loser_id  = ?) l
   `),
+
+  /** Pokemon that beat the same opponents as A — i.e. same tier, liked by similar users. */
+  correlatedPokemon: db.prepare(`
+    SELECT
+      b.winner_id        AS pokemon_id,
+      COUNT(*)           AS shared_opponents,
+      SUM(a.count + b.count) AS combined_strength
+    FROM pairwise_wins a
+    JOIN pairwise_wins b ON a.loser_id = b.loser_id
+    WHERE a.winner_id = ?
+      AND b.winner_id != ?
+    GROUP BY b.winner_id
+    HAVING shared_opponents >= 2
+    ORDER BY shared_opponents DESC, combined_strength DESC
+    LIMIT 30
+  `),
 };
