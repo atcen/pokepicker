@@ -5,61 +5,121 @@ export interface OnboardingBatch {
   targetFeatures: string[];
 }
 
-// Reihenfolge ist wichtig — frühere Batches liefern die stärksten Signale.
-// Ziel: maximale Feature-Coverage in minimalen Batches.
 export const ONBOARDING_BATCHES: OnboardingBatch[] = [
+  // ─── Starter pro Generation ───────────────────────────────────────────────
   {
-    id: 'kanto_starters',
+    id: 'starters_gen1',
     label: 'Sortiere die Kanto-Starter',
     pokemonIds: [1, 4, 7],
-    targetFeatures: ['types', 'evoStage', 'generation'],
+    targetFeatures: ['types', 'generation'],
   },
   {
-    id: 'kanto_legendary',
+    id: 'starters_gen2',
+    label: 'Sortiere die Johto-Starter',
+    pokemonIds: [152, 155, 158],
+    targetFeatures: ['types', 'generation'],
+  },
+  {
+    id: 'starters_gen3',
+    label: 'Sortiere die Hoenn-Starter',
+    pokemonIds: [252, 255, 258],
+    targetFeatures: ['types', 'generation'],
+  },
+  {
+    id: 'starters_gen4',
+    label: 'Sortiere die Sinnoh-Starter',
+    pokemonIds: [387, 390, 393],
+    targetFeatures: ['types', 'generation'],
+  },
+  {
+    id: 'starters_gen5',
+    label: 'Sortiere die Einall-Starter',
+    pokemonIds: [495, 498, 501],
+    targetFeatures: ['types', 'generation'],
+  },
+  {
+    id: 'starters_gen6',
+    label: 'Sortiere die Kalos-Starter',
+    pokemonIds: [650, 653, 656],
+    targetFeatures: ['types', 'generation'],
+  },
+  {
+    id: 'starters_gen7',
+    label: 'Sortiere die Alola-Starter',
+    pokemonIds: [722, 725, 728],
+    targetFeatures: ['types', 'generation'],
+  },
+  {
+    id: 'starters_gen8',
+    label: 'Sortiere die Galar-Starter',
+    pokemonIds: [810, 813, 816],
+    targetFeatures: ['types', 'generation'],
+  },
+  {
+    id: 'starters_gen9',
+    label: 'Sortiere die Paldea-Starter',
+    pokemonIds: [906, 909, 912],
+    targetFeatures: ['types', 'generation'],
+  },
+
+  // ─── Legendäre pro Generation ─────────────────────────────────────────────
+  {
+    id: 'legendary_gen1',
     label: 'Sortiere die Kanto-Legendären',
-    pokemonIds: [144, 145, 146, 150, 151, 243],
+    pokemonIds: [144, 145, 146, 150, 151],
     targetFeatures: ['legendary', 'mythical', 'types'],
   },
   {
-    id: 'pseudo_legendary',
-    label: 'Sortiere diese Pseudo-Legendären',
-    pokemonIds: [149, 248, 373, 376, 445, 635],
-    targetFeatures: ['pseudoLegendary', 'dragon', 'generation'],
+    id: 'legendary_gen2',
+    label: 'Sortiere die Johto-Legendären',
+    pokemonIds: [243, 244, 245, 249, 250, 251],
+    targetFeatures: ['legendary', 'mythical', 'types'],
   },
   {
-    id: 'single_stage',
-    label: 'Sortiere diese Einzelpokémon',
-    pokemonIds: [133, 132, 131, 143, 196, 197],
-    targetFeatures: ['evoStage', 'bodyGroup', 'types'],
+    id: 'legendary_gen3',
+    label: 'Sortiere die Hoenn-Legendären',
+    pokemonIds: [380, 381, 382, 383, 384, 385],
+    targetFeatures: ['legendary', 'mythical', 'types'],
   },
   {
-    id: 'bug_normal',
-    label: 'Sortiere diese Pokémon',
-    pokemonIds: [10, 13, 16, 19, 43, 161],
-    targetFeatures: ['types'],
+    id: 'legendary_gen4',
+    label: 'Sortiere die Sinnoh-Legendären',
+    pokemonIds: [483, 484, 487, 491, 492, 493],
+    targetFeatures: ['legendary', 'mythical', 'types'],
   },
   {
-    id: 'johto_starters',
-    label: 'Sortiere die Johto-Starter',
-    pokemonIds: [152, 155, 158],
-    targetFeatures: ['generation', 'types', 'evoStage'],
-  },
-  // Batches 7 & 8 (Index 6 & 7): mixed mode — 4 scripted + 2 freie Items
-  {
-    id: 'popular_mixed',
-    label: 'Sortiere diese bekannten Pokémon',
-    pokemonIds: [25, 39, 94, 130],   // nur 4 — 2 Slots für freie Picks
-    targetFeatures: ['bodyGroup', 'types', 'popularity'],
+    id: 'legendary_gen5',
+    label: 'Sortiere die Einall-Legendären',
+    pokemonIds: [638, 639, 640, 643, 644, 646],
+    targetFeatures: ['legendary', 'mythical', 'types'],
   },
   {
-    id: 'hoenn_starters',
-    label: 'Sortiere die Hoenn-Starter',
-    pokemonIds: [252, 255, 258, 253], // nur 4 — 2 Slots für freie Picks
-    targetFeatures: ['generation', 'types'],
+    id: 'legendary_gen6',
+    label: 'Sortiere die Kalos-Legendären',
+    pokemonIds: [716, 717, 718, 719, 720, 721],
+    targetFeatures: ['legendary', 'mythical', 'types'],
+  },
+  {
+    id: 'legendary_gen7',
+    label: 'Sortiere die Alola-Legendären',
+    pokemonIds: [785, 786, 787, 788, 791, 792],
+    targetFeatures: ['legendary', 'mythical', 'types'],
+  },
+  {
+    id: 'legendary_gen8',
+    label: 'Sortiere die Galar-Legendären',
+    pokemonIds: [888, 889, 890, 894, 895, 898],
+    targetFeatures: ['legendary', 'mythical', 'types'],
+  },
+  {
+    id: 'legendary_gen9',
+    label: 'Sortiere die Paldea-Legendären',
+    pokemonIds: [1001, 1002, 1003, 1004, 1005, 1006],
+    targetFeatures: ['legendary', 'mythical', 'types'],
   },
 ];
 
 export const ONBOARDING_COUNT = ONBOARDING_BATCHES.length;
 
-// Ab diesem Index beginnt der mixed mode (4 scripted + 2 frei)
-export const MIXED_MODE_START_INDEX = 6;
+// Kein mixed mode — alle Batches sind vollständig geskriptet
+export const MIXED_MODE_START_INDEX = ONBOARDING_COUNT;
