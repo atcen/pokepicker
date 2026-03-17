@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pokémon Picker</title>
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="app-title">Pokémon <span>Picker</span></div>
+      <div id="stats-bar">Lade Pokémon...</div>
+      <div class="header-actions">
+        <select id="lang-select" class="lang-select" title="Sprache / Language"></select>
+        <button id="undo-btn" class="btn btn-secondary" title="Letzten Schritt rückgängig">↩ Undo</button>
+        <button id="reset-btn" class="btn btn-danger" title="Alles zurücksetzen">Reset</button>
+      </div>
+    </header>
+
+    <!-- Progress bar (shown only during initial load) -->
+    <div id="progress-container">
+      <div id="progress-text">Lade Pokémon...</div>
+      <div class="progress-bar-outer">
+        <div id="progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- Main app layout -->
+    <main class="app-main">
+      <!-- Sort panel -->
+      <section class="sorter-panel">
+        <div class="panel-title">Sortiere nach Präferenz</div>
+        <div id="sorter-container"></div>
+      </section>
+
+      <!-- Ranking panel -->
+      <aside class="ranking-panel">
+        <div
+          class="panel-title ranking-toggle"
+          id="ranking-toggle"
+          role="button"
+          tabindex="0"
+          aria-expanded="true"
+        >
+          Aktuelle Rangliste
+          <span class="toggle-icon">▾</span>
+        </div>
+        <div id="ranking-container"></div>
+      </aside>
+    </main>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+  <script>
+    // Mobile toggle for ranking panel
+    const toggle = document.getElementById('ranking-toggle');
+    const panel = toggle && toggle.closest('.ranking-panel');
+    if (toggle && panel) {
+      toggle.addEventListener('click', () => {
+        panel.classList.toggle('collapsed');
+        toggle.setAttribute('aria-expanded', String(!panel.classList.contains('collapsed')));
+        const icon = toggle.querySelector('.toggle-icon');
+        if (icon) icon.textContent = panel.classList.contains('collapsed') ? '▸' : '▾';
+      });
+      toggle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle.click();
+        }
+      });
+    }
+  </script>
+</body>
+</html>

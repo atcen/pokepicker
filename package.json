@@ -1,0 +1,33 @@
+{
+  "name": "pokepicker",
+  "version": "1.0.0",
+  "description": "Dieses Projekt ist ein Redesign des [favorite-picker](https://github.com/antialiasis/favorite-picker) mit fokus auf Pokémon (1000+ Items). Das Original hat ein fundamentales Skalierungsproblem: es nutzt Batch-Elimination (O(n²)) und produziert erst nach einer kompletten Runde eine brauchbare Rangliste.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently -n server,vite -c cyan,green \"tsx server/index.ts\" \"vite\"",
+    "server": "tsx server/index.ts",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:33505/git/atcen/pokepicker"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.5.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "better-sqlite3": "^12.8.0",
+    "hono": "^4.12.8",
+    "sql.js": "^1.14.1"
+  }
+}
