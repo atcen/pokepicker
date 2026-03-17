@@ -1,9 +1,14 @@
-import type { PokemonFeatures, Rating, FeatureWeights } from '../types';
+import type { PokemonFeatures, Rating, FeatureWeights, PairingMode } from '../types';
 import { computePrior } from './prior';
 import { computeWeightDelta } from './weights';
 import { CONFIG } from '../config';
 
-export function selectNextBatch(
+// ─── Mode-specific batch selectors ───────────────────────────────────────────
+
+/**
+ * exploration: hoher sigma, mix aus bekannt/unbekannt — wie bisher.
+ */
+function selectExplorationBatch(
   ratings: Record<number, Rating>,
   _pokemon: Record<number, PokemonFeatures>,
   outliers: number[],
@@ -72,6 +77,122 @@ export function selectNextBatch(
   }
 
   return selected.slice(0, batchSize);
+}
+
+/**
+ * refinement: nur Top-N, bevorzugt enge mu-Abstände.
+ * Wählt ein zufälliges Pivot aus den Top-N und füllt den Batch mit den
+ * mu-nächsten Nachbarn — klärende Vergleiche innerhalb der Spitze.
+ */
+function selectRefinementBatch(
+  ratings: Record<number, Rating>,
+  batchSize: number,
+  topN: number = 50
+): number[] {
+  const topRatings = Object.values(ratings)
+    .sort((a, b) => b.mu - a.mu)
+    .slice(0, topN);
+
+  if (topRatings.length <= batchSize) return topRatings.map((r) => r.pokemonId);
+
+  const pivotIdx = Math.floor(Math.random() * topRatings.length);
+  const pivot = topRatings[pivotIdx];
+
+  const others = topRatings.filter((_, i) => i !== pivotIdx);
+  others.sort((a, b) => Math.abs(a.mu - pivot.mu) - Math.abs(b.mu - pivot.mu));
+
+  return [pivot.pokemonId, ...others.slice(0, batchSize - 1).map((r) => r.pokemonId)];
+}
+
+/**
+ * challenge: Aufsteiger mit hohem sigma UND hohem Prior gegen etablierte Top-Items.
+ * Klärt, ob vielversprechende Pokémon wirklich oben hingehören.
+ */
+function selectChallengeBatch(
+  ratings: Record<number, Rating>,
+  pokemon: Record<number, PokemonFeatures>,
+  weights: FeatureWeights,
+  batchSize: number
+): number[] {
+  // Challengers: unsettled items whose prior suggests high potential
+  const challengers = Object.values(ratings)
+    .filter((r) => r.sigma > 200 && pokemon[r.pokemonId])
+    .map((r) => ({
+      id: r.pokemonId,
+      score: r.sigma + Math.max(0, computePrior(pokemon[r.pokemonId], weights) - CONFIG.BASE_RATING),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  // Top items: settled and highly rated
+  const topItems = Object.values(ratings)
+    .filter((r) => r.sigma < 150 && r.mu > CONFIG.BASE_RATING + 100)
+    .sort((a, b) => b.mu - a.mu);
+
+  const selected: number[] = [];
+
+  const challengerSlots = Math.ceil(batchSize / 2);
+  for (const c of challengers.slice(0, challengerSlots)) {
+    selected.push(c.id);
+  }
+
+  for (const t of topItems) {
+    if (selected.length >= batchSize) break;
+    if (!selected.includes(t.pokemonId)) selected.push(t.pokemonId);
+  }
+
+  // Fallback to exploration if not enough candidates
+  if (selected.length < batchSize) {
+    const fallback = selectExplorationBatch(ratings, pokemon, [], batchSize, selected);
+    for (const id of fallback) {
+      if (selected.length >= batchSize) break;
+      if (!selected.includes(id)) selected.push(id);
+    }
+  }
+
+  return selected.slice(0, batchSize);
+}
+
+// ─── Mode recommendation ──────────────────────────────────────────────────────
+
+/**
+ * Empfiehlt den optimalen Modus basierend auf dem aktuellen Ratingsstand.
+ */
+export function recommendMode(ratings: Record<number, Rating>): PairingMode {
+  const unseen = Object.values(ratings).filter((r) => r.comparisons === 0);
+  const settled = Object.values(ratings).filter((r) => r.sigma < 150 && r.comparisons > 0);
+
+  const top50 = Object.values(ratings)
+    .sort((a, b) => b.mu - a.mu)
+    .slice(0, 50);
+  const highSigmaTopItems = top50.filter((r) => r.sigma > 200);
+
+  if (unseen.length > 500) return 'exploration';
+  if (highSigmaTopItems.length > 5) return 'challenge';
+  if (settled.length >= 30) return 'refinement';
+  return 'exploration';
+}
+
+// ─── Main dispatcher ──────────────────────────────────────────────────────────
+
+export function selectNextBatch(
+  mode: PairingMode,
+  ratings: Record<number, Rating>,
+  pokemon: Record<number, PokemonFeatures>,
+  weights: FeatureWeights,
+  outliers: number[],
+  batchSize: number,
+  recentBatchIds: number[]
+): number[] {
+  switch (mode) {
+    case 'refinement':
+      return selectRefinementBatch(ratings, batchSize);
+    case 'challenge':
+      return selectChallengeBatch(ratings, pokemon, weights, batchSize);
+    case 'exploration':
+    case 'onboarding':
+    default:
+      return selectExplorationBatch(ratings, pokemon, outliers, batchSize, recentBatchIds);
+  }
 }
 
 export interface ConfidenceInfo {

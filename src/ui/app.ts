@@ -1,9 +1,9 @@
-import type { AppState, PokemonFeatures, Rating, SortResult } from '../types';
+import type { AppState, PairingMode, PokemonFeatures, Rating, SortResult } from '../types';
 import { fetchAllPokemon } from '../data/pokeapi';
 import { DEFAULT_WEIGHTS, computePrior } from '../rating/prior';
 import { updateRatingsFromSort } from '../rating/elo';
 import { updateWeightsAndPropagate, detectOutliers } from '../rating/weights';
-import { selectNextBatch, computeConfidence } from '../rating/pairing';
+import { selectNextBatch, computeConfidence, recommendMode } from '../rating/pairing';
 import { ONBOARDING_BATCHES, ONBOARDING_COUNT, MIXED_MODE_START_INDEX } from '../data/onboarding';
 import { SortBatchUI } from './sorter';
 import { RankingUI } from './ranking';
@@ -28,6 +28,8 @@ function loadState(): AppState | null {
     if (state.onboardingComplete === undefined) state.onboardingComplete = true;
     if (state.onboardingIndex === undefined) state.onboardingIndex = ONBOARDING_COUNT;
     if (state.weightHistory === undefined) state.weightHistory = [];
+    if (state.pairingMode === undefined) state.pairingMode = 'exploration';
+    if (state.modeAutoSwitch === undefined) state.modeAutoSwitch = true;
     return state;
   } catch {
     return null;
@@ -55,12 +57,14 @@ export class App {
   private rankingContainer!: HTMLElement;
   private statsEl!: HTMLElement;
   private progressContainer!: HTMLElement;
+  private modeBarEl!: HTMLElement;
 
   async init(): Promise<void> {
     this.sorterContainer = document.getElementById('sorter-container')!;
     this.rankingContainer = document.getElementById('ranking-container')!;
     this.statsEl = document.getElementById('stats-bar')!;
     this.progressContainer = document.getElementById('progress-container')!;
+    this.modeBarEl = document.getElementById('mode-bar')!;
 
     document.getElementById('undo-btn')?.addEventListener('click', () => this.handleUndo());
     document.getElementById('reset-btn')?.addEventListener('click', () => this.handleReset());
@@ -143,6 +147,8 @@ export class App {
       onboardingComplete: false,
       onboardingIndex: 0,
       weightHistory: [],
+      pairingMode: 'exploration',
+      modeAutoSwitch: true,
     };
 
     saveState(this.state);
@@ -166,8 +172,10 @@ export class App {
         const scriptedIds = batch.pokemonIds.filter((id) => this.allPokemon[id]);
         const exclude = [...scriptedIds, ...this.recentBatchIds];
         const freeIds = selectNextBatch(
+          'exploration',
           this.state.ratings,
           this.allPokemon,
+          this.state.weights,
           this.outliers,
           2,
           exclude
@@ -179,10 +187,12 @@ export class App {
       return { ids: validIds, label: batch.label };
     }
 
-    // Free mode
+    // Free mode — use current pairingMode
     const ids = selectNextBatch(
+      this.state.pairingMode,
       this.state.ratings,
       this.allPokemon,
+      this.state.weights,
       this.outliers,
       CONFIG.BATCH_SIZE,
       this.recentBatchIds
@@ -239,6 +249,7 @@ export class App {
     });
 
     this.updateStats(confInfo.label);
+    this.renderModeBar();
   }
 
   private renderOnboardingBanner(label: string | null): void {
@@ -312,6 +323,7 @@ export class App {
 
     saveState(this.state);
     recordSortResult(result, SESSION_ID).catch(() => {});
+    this.updateModeIfNeeded();
     this.renderNextBatch();
   }
 
@@ -400,5 +412,95 @@ export class App {
     const elapsed = Math.round((Date.now() - this.state.startedAt) / 60000);
     this.statsEl.textContent =
       `${this.state.totalInteractions} Interaktionen · ${elapsed} Min · ${confidenceLabel}`;
+  }
+
+  // ─── Mode management ───────────────────────────────────────────────────────
+
+  private setMode(mode: PairingMode): void {
+    if (!this.state) return;
+    this.state = { ...this.state, pairingMode: mode };
+    saveState(this.state);
+    this.renderModeBar();
+  }
+
+  private updateModeIfNeeded(): void {
+    if (!this.state || !this.state.modeAutoSwitch || !this.state.onboardingComplete) return;
+
+    const recommended = recommendMode(this.state.ratings);
+    if (recommended !== this.state.pairingMode) {
+      const prev = this.state.pairingMode;
+      this.state = { ...this.state, pairingMode: recommended };
+      saveState(this.state);
+      this.showModeNotification(prev, recommended);
+    }
+  }
+
+  private showModeNotification(_from: PairingMode, to: PairingMode): void {
+    const messages: Record<PairingMode, string> = {
+      exploration: 'Wechsle zu Erkunden — mehr Pokémon kennenlernen.',
+      refinement: 'Wechsle zu Verfeinern — deine Top 30 sind bereit zum Feinsortieren.',
+      challenge: 'Wechsle zu Aufsteiger prüfen — aussichtsreiche Pokémon klären.',
+      onboarding: '',
+    };
+    const msg = messages[to];
+    if (!msg) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'welcome-back-banner';
+    banner.textContent = msg;
+    document.body.prepend(banner);
+    setTimeout(() => banner.remove(), 5000);
+  }
+
+  private renderModeBar(): void {
+    if (!this.state || !this.state.onboardingComplete) {
+      this.modeBarEl.style.display = 'none';
+      return;
+    }
+
+    this.modeBarEl.style.display = 'flex';
+    this.modeBarEl.innerHTML = '';
+
+    const modeMeta: Record<PairingMode, { label: string; title: string }> = {
+      exploration: { label: 'Erkunden',          title: 'Neue Pokémon entdecken, maximale Informationsgewinnung' },
+      refinement:  { label: 'Top verfeinern',    title: 'Deine Top-Pokémon fein sortieren' },
+      challenge:   { label: 'Aufsteiger prüfen', title: 'Vielversprechende Pokémon gegen etablierte Favoriten testen' },
+      onboarding:  { label: 'Einrichtung',       title: '' },
+    };
+
+    // Current mode indicator
+    const indicator = document.createElement('span');
+    indicator.className = 'mode-indicator';
+    indicator.textContent = `Modus: ${modeMeta[this.state.pairingMode].label}`;
+    this.modeBarEl.appendChild(indicator);
+
+    // Manual mode buttons
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'mode-btn-group';
+    const modes: PairingMode[] = ['exploration', 'refinement', 'challenge'];
+    for (const m of modes) {
+      const btn = document.createElement('button');
+      btn.className = 'mode-btn' + (m === this.state.pairingMode ? ' mode-btn--active' : '');
+      btn.textContent = modeMeta[m].label;
+      btn.title = modeMeta[m].title;
+      btn.addEventListener('click', () => this.setMode(m));
+      btnGroup.appendChild(btn);
+    }
+    this.modeBarEl.appendChild(btnGroup);
+
+    // Auto-switch toggle
+    const autoLabel = document.createElement('label');
+    autoLabel.className = 'mode-auto-label';
+    const autoCheck = document.createElement('input');
+    autoCheck.type = 'checkbox';
+    autoCheck.checked = this.state.modeAutoSwitch;
+    autoCheck.addEventListener('change', () => {
+      if (!this.state) return;
+      this.state = { ...this.state, modeAutoSwitch: autoCheck.checked };
+      saveState(this.state);
+    });
+    autoLabel.appendChild(autoCheck);
+    autoLabel.append(' Auto');
+    this.modeBarEl.appendChild(autoLabel);
   }
 }
