@@ -33,7 +33,8 @@ export const ONBOARDING_BATCHES: OnboardingBatch[] = [
   { id: 'starters_gen8',   label: 'Sortiere die Galar-Starter',    pokemonIds: [810, 813, 816],                   targetFeatures: ['types', 'generation'] },
   { id: 'legendary_gen8',  label: 'Sortiere die Galar-Legendären',  pokemonIds: [888, 889, 890, 894, 895, 898],   targetFeatures: ['legendary', 'mythical', 'types'] },
   // ─── Legends: Arceus ──────────────────────────────────────────────────────
-  { id: 'starters_legends_arceus', label: 'Sortiere die Legenden: Arceus-Starter', pokemonIds: [722, 155, 501],                targetFeatures: ['types', 'generation'] },
+  { id: 'starters_legends_arceus', label: 'Sortiere die Legenden: Arceus-Starter', pokemonIds: [722, 155, 501],  targetFeatures: ['types', 'generation'] },
+  { id: 'starters_legends_za',     label: 'Sortiere die Legenden: Z-A-Starter',    pokemonIds: [152, 498, 158],  targetFeatures: ['types', 'generation'] },
   // ─── Gen 9 ────────────────────────────────────────────────────────────────
   { id: 'starters_gen9',   label: 'Sortiere die Paldea-Starter',   pokemonIds: [906, 909, 912],                   targetFeatures: ['types', 'generation'] },
   { id: 'legendary_gen9',  label: 'Sortiere die Paldea-Legendären', pokemonIds: [1001, 1002, 1003, 1004, 1005, 1006], targetFeatures: ['legendary', 'mythical', 'types'] },
