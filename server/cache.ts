@@ -200,8 +200,30 @@ let warmupProgress = { done: (stmts.getCachedCount.get() as { n: number }).n, to
 
 export function getWarmupProgress() { return warmupProgress; }
 
+async function migrateSprites(): Promise<void> {
+  const rows = stmts.getAllFeatures.all() as { data: string }[];
+  const toMigrate = rows
+    .map(r => JSON.parse(r.data) as PokemonFeatures)
+    .filter(pkm => !pkm.sprite.startsWith('/sprites/'));
+
+  if (toMigrate.length === 0) return;
+  console.log(`Migrating sprites for ${toMigrate.length} Pokémon...`);
+
+  for (let i = 0; i < toMigrate.length; i += BATCH) {
+    const batch = toMigrate.slice(i, i + BATCH);
+    await Promise.allSettled(batch.map(async (pkm) => {
+      await downloadSprite(pkm.sprite, pkm.id);
+      const updated: PokemonFeatures = { ...pkm, sprite: `/sprites/${pkm.id}.png` };
+      stmts.upsertFeature.run({ id: pkm.id, data: JSON.stringify(updated), cached_at: Date.now() });
+    }));
+  }
+
+  console.log('Sprite migration complete.');
+}
+
 export async function warmCache(): Promise<void> {
   await fetchTypeNames();
+  await migrateSprites();
 
   const ids: number[] = [];
   for (let i = 1; i <= POKEMON_COUNT; i++) {
