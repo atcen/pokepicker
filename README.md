@@ -403,11 +403,15 @@ export const CONFIG = {
 
 ## Was bewusst weggelassen wird
 
-- Kein Multiplayer / Sharing
-- Keine Shortcode-Links (kann später ergänzt werden)
-- Kein Server — alles läuft lokal
 - Keine Authentifizierung
 - Keine Tier-List-Darstellung (bewusst: strikte Reihenfolge erzwingt Abwägung)
+
+---
+
+## Stats
+
+Es sollen Statistiken über die Wahl über alle User hinweg erfasst werden. Sollten wir auch in der Lage sein langfristig den Algorithmus zu optimieren.
+Nutze hierfür SQLite evtl auch wenn es sinnmacht mit Vector.
 
 ---
 
