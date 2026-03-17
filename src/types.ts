@@ -10,6 +10,7 @@ export interface PokemonFeatures {
   isLegendary: boolean;
   isMythical: boolean;
   isPseudoLegendary: boolean;
+  isStarter: boolean;
 }
 
 export interface Rating {

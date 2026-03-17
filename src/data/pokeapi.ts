@@ -7,152 +7,168 @@ import {
   type RawEvoChain,
   type EvoLineInfo,
 } from './features';
+import { loadNames, loadTypeNames } from './i18n';
 import { CONFIG } from '../config';
 
 const CACHE_PREFIX = 'pkm_';
 const EVO_CACHE_PREFIX = 'evo_';
 
-function cacheKey(id: number): string {
-  return `${CACHE_PREFIX}${id}`;
-}
-
-function evoCacheKey(chainId: number): string {
-  return `${EVO_CACHE_PREFIX}${chainId}`;
-}
-
 function loadFromCache(id: number): PokemonFeatures | null {
   try {
-    const raw = localStorage.getItem(cacheKey(id));
+    const raw = localStorage.getItem(`${CACHE_PREFIX}${id}`);
     if (!raw) return null;
-    return JSON.parse(raw) as PokemonFeatures;
-  } catch {
-    return null;
-  }
+    const pkm = JSON.parse(raw) as PokemonFeatures;
+    // Migrate old cache entries missing isStarter
+    if (pkm.isStarter === undefined) return null;
+    return pkm;
+  } catch { return null; }
 }
 
 function saveToCache(pokemon: PokemonFeatures): void {
-  try {
-    localStorage.setItem(cacheKey(pokemon.id), JSON.stringify(pokemon));
-  } catch {
-    // localStorage full – ignore
-  }
+  try { localStorage.setItem(`${CACHE_PREFIX}${pokemon.id}`, JSON.stringify(pokemon)); }
+  catch { /* full */ }
 }
 
 async function apiFetch<T>(url: string): Promise<T> {
-  const resp = await fetch(url);
-  if (!resp.ok) {
-    throw new Error(`PokeAPI error ${resp.status}: ${url}`);
-  }
-  return resp.json() as Promise<T>;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`PokeAPI ${r.status}: ${url}`);
+  return r.json() as Promise<T>;
 }
 
-const evoChainCache = new Map<number, RawEvoChain>();
+const evoChainMem = new Map<number, RawEvoChain>();
 
 async function fetchEvoChain(chainUrl: string): Promise<RawEvoChain> {
-  const parts = chainUrl.split('/').filter(Boolean);
-  const chainId = parseInt(parts[parts.length - 1], 10);
-
-  if (evoChainCache.has(chainId)) {
-    return evoChainCache.get(chainId)!;
-  }
-
-  const stored = localStorage.getItem(evoCacheKey(chainId));
-  if (stored) {
-    const data = JSON.parse(stored) as RawEvoChain;
-    evoChainCache.set(chainId, data);
-    return data;
-  }
-
+  const id = parseInt(chainUrl.split('/').filter(Boolean).at(-1) ?? '0', 10);
+  if (evoChainMem.has(id)) return evoChainMem.get(id)!;
+  const stored = localStorage.getItem(`${EVO_CACHE_PREFIX}${id}`);
+  if (stored) { const d = JSON.parse(stored) as RawEvoChain; evoChainMem.set(id, d); return d; }
   const data = await apiFetch<RawEvoChain>(chainUrl);
-  evoChainCache.set(chainId, data);
-  try {
-    localStorage.setItem(evoCacheKey(chainId), JSON.stringify(data));
-  } catch {
-    // ignore
-  }
+  evoChainMem.set(id, data);
+  try { localStorage.setItem(`${EVO_CACHE_PREFIX}${id}`, JSON.stringify(data)); } catch { /* full */ }
   return data;
 }
 
-export async function fetchPokemon(id: number): Promise<PokemonFeatures> {
+async function fetchPokemonDirect(id: number): Promise<PokemonFeatures> {
   const cached = loadFromCache(id);
   if (cached) return cached;
 
-  const [pokemonData, speciesData] = await Promise.all([
+  const [raw, species] = await Promise.all([
     apiFetch<RawPokemonData>(`https://pokeapi.co/api/v2/pokemon/${id}`),
     apiFetch<RawSpeciesData>(`https://pokeapi.co/api/v2/pokemon-species/${id}`),
   ]);
 
-  let evoLineInfo: EvoLineInfo = { baseId: id, stage: 0 };
-
-  if (speciesData.evolution_chain?.url) {
-    try {
-      const chain = await fetchEvoChain(speciesData.evolution_chain.url);
-      evoLineInfo = extractEvoLineFromChain(chain, id);
-    } catch {
-      // fallback: treat as standalone
-    }
+  let evoInfo: EvoLineInfo = { baseId: id, stage: 0 };
+  if (species.evolution_chain?.url) {
+    try { evoInfo = extractEvoLineFromChain(await fetchEvoChain(species.evolution_chain.url), id); }
+    catch { /* standalone */ }
   }
 
-  const features = extractFeatures(pokemonData, speciesData, evoLineInfo);
+  const features = extractFeatures(raw, species, evoInfo);
   saveToCache(features);
   return features;
+}
+
+// ─── Server-first strategy ────────────────────────────────────────────────
+
+interface ServerResponse {
+  pokemon: PokemonFeatures[];
+  names: Record<number, Record<string, string>>;
+  typeNames: Record<string, Record<string, string>>;
+  complete: boolean;
+  cached: number;
+  total: number;
 }
 
 export async function fetchAllPokemon(
   onProgress: (loaded: number, total: number) => void
 ): Promise<PokemonFeatures[]> {
   const total = CONFIG.POKEMON_COUNT;
+
+  // Try server cache first
+  try {
+    const resp = await fetch('/api/pokemon');
+    if (resp.ok) {
+      const data = await resp.json() as ServerResponse;
+
+      // Load i18n data
+      loadNames(data.names);
+      loadTypeNames(data.typeNames);
+
+      // Cache server results locally
+      for (const pkm of data.pokemon) saveToCache(pkm);
+
+      onProgress(data.cached, total);
+
+      if (data.complete) {
+        onProgress(total, total);
+        return data.pokemon;
+      }
+
+      // Server still warming up — fill gaps from direct PokeAPI
+      const servedIds = new Set(data.pokemon.map(p => p.id));
+      const results: PokemonFeatures[] = [...data.pokemon];
+      let loaded = data.cached;
+
+      const missing: number[] = [];
+      for (let i = 1; i <= total; i++) {
+        if (!servedIds.has(i)) missing.push(i);
+      }
+
+      for (let i = 0; i < missing.length; i += CONFIG.API_BATCH_SIZE) {
+        const batch = missing.slice(i, i + CONFIG.API_BATCH_SIZE);
+        const settled = await Promise.allSettled(batch.map(fetchPokemonDirect));
+        for (let j = 0; j < settled.length; j++) {
+          const r = settled[j];
+          results.push(r.status === 'fulfilled' ? r.value : makeFallback(batch[j]));
+          loaded++;
+        }
+        onProgress(loaded, total);
+      }
+
+      return results.sort((a, b) => a.id - b.id);
+    }
+  } catch { /* server not running – fall through */ }
+
+  // Full direct PokeAPI fallback
+  return fetchAllDirect(onProgress);
+}
+
+async function fetchAllDirect(
+  onProgress: (loaded: number, total: number) => void
+): Promise<PokemonFeatures[]> {
+  const total = CONFIG.POKEMON_COUNT;
   const results: PokemonFeatures[] = new Array(total);
   let loaded = 0;
-
-  // Check which are already cached
   const toFetch: number[] = [];
+
   for (let i = 1; i <= total; i++) {
     const cached = loadFromCache(i);
-    if (cached) {
-      results[i - 1] = cached;
-      loaded++;
-    } else {
-      toFetch.push(i);
-    }
+    if (cached) { results[i - 1] = cached; loaded++; }
+    else toFetch.push(i);
   }
-
   onProgress(loaded, total);
 
-  // Fetch remaining in batches
-  const batchSize = CONFIG.API_BATCH_SIZE;
-  for (let i = 0; i < toFetch.length; i += batchSize) {
-    const batch = toFetch.slice(i, i + batchSize);
-    const batchResults = await Promise.allSettled(
-      batch.map((id) => fetchPokemon(id))
-    );
-
-    for (let j = 0; j < batchResults.length; j++) {
-      const result = batchResults[j];
+  for (let i = 0; i < toFetch.length; i += CONFIG.API_BATCH_SIZE) {
+    const batch = toFetch.slice(i, i + CONFIG.API_BATCH_SIZE);
+    const settled = await Promise.allSettled(batch.map(fetchPokemonDirect));
+    for (let j = 0; j < settled.length; j++) {
       const id = batch[j];
-      if (result.status === 'fulfilled') {
-        results[id - 1] = result.value;
-      } else {
-        // Minimal fallback entry
-        results[id - 1] = {
-          id,
-          name: `pokemon-${id}`,
-          sprite: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`,
-          types: ['normal'],
-          generation: 1,
-          evoLineId: id,
-          evoStage: 0,
-          bodyGroup: 'blob',
-          isLegendary: false,
-          isMythical: false,
-          isPseudoLegendary: false,
-        };
-      }
+      results[id - 1] = settled[j].status === 'fulfilled'
+        ? (settled[j] as PromiseFulfilledResult<PokemonFeatures>).value
+        : makeFallback(id);
       loaded++;
     }
-
     onProgress(loaded, total);
   }
 
   return results.filter(Boolean);
+}
+
+function makeFallback(id: number): PokemonFeatures {
+  return {
+    id, name: `pokemon-${id}`,
+    sprite: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`,
+    types: ['normal'], generation: 1, evoLineId: id, evoStage: 0, bodyGroup: 'blob',
+    isLegendary: false, isMythical: false, isPseudoLegendary: false, isStarter: false,
+  };
 }

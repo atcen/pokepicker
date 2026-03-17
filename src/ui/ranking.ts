@@ -1,5 +1,6 @@
 import type { PokemonFeatures, Rating } from '../types';
 import { CONFIG } from '../config';
+import { getName } from '../data/i18n';
 
 function formatName(name: string): string {
   return name
@@ -61,7 +62,7 @@ export class RankingUI {
 
       const nameEl = document.createElement('span');
       nameEl.className = 'ranking-name';
-      nameEl.textContent = formatName(pkm.name);
+      nameEl.textContent = getName(pkm.id, formatName(pkm.name));
 
       const ratingEl = document.createElement('span');
       ratingEl.className = 'ranking-rating';

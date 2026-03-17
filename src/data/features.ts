@@ -1,5 +1,17 @@
 import type { PokemonFeatures } from '../types';
 
+const STARTER_BASE_IDS = new Set([
+  1, 4, 7,         // Kanto
+  152, 155, 158,   // Johto
+  252, 255, 258,   // Hoenn
+  387, 390, 393,   // Sinnoh
+  495, 498, 501,   // Unova
+  650, 653, 656,   // Kalos
+  722, 725, 728,   // Alola
+  810, 813, 816,   // Galar
+  906, 909, 912,   // Paldea
+]);
+
 const PSEUDO_LEGENDARY_IDS = new Set([
   149, // Dragonite
   248, // Tyranitar
@@ -87,6 +99,7 @@ export function extractFeatures(
     isLegendary,
     isMythical,
     isPseudoLegendary,
+    isStarter: STARTER_BASE_IDS.has(evoLineInfo.baseId),
   };
 }
 

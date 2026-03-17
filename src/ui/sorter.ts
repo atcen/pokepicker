@@ -1,5 +1,6 @@
 import type { PokemonFeatures } from '../types';
 import { TYPE_COLORS } from './typeColors';
+import { getName, getTypeName } from '../data/i18n';
 
 type DragSource =
   | { zone: 'pool'; pokemonIdx: number }
@@ -109,7 +110,7 @@ export class SortBatchUI {
 
     const name = document.createElement('div');
     name.className = 'pool-name';
-    name.textContent = formatName(pkm.name);
+    name.textContent = getName(pkm.id, formatName(pkm.name));
     card.appendChild(name);
 
     const types = document.createElement('div');
@@ -117,11 +118,14 @@ export class SortBatchUI {
     for (const t of pkm.types) {
       const pill = document.createElement('span');
       pill.className = 'type-pill';
-      pill.textContent = t;
+      pill.textContent = getTypeName(t);
       pill.style.backgroundColor = TYPE_COLORS[t] ?? '#888';
       types.appendChild(pill);
     }
     card.appendChild(types);
+
+    const badges = buildBadges(pkm);
+    if (badges) card.appendChild(badges);
 
     card.addEventListener('dragstart', (e) => {
       this.dragSource = { zone: 'pool', pokemonIdx };
@@ -231,17 +235,26 @@ export class SortBatchUI {
     const info = document.createElement('div');
     info.className = 'slot-info';
 
+    const nameRow = document.createElement('div');
+    nameRow.style.display = 'flex';
+    nameRow.style.alignItems = 'center';
+    nameRow.style.gap = '6px';
+
     const name = document.createElement('div');
     name.className = 'slot-name';
-    name.textContent = formatName(pkm.name);
-    info.appendChild(name);
+    name.textContent = getName(pkm.id, formatName(pkm.name));
+    nameRow.appendChild(name);
+
+    const badges = buildBadges(pkm);
+    if (badges) nameRow.appendChild(badges);
+    info.appendChild(nameRow);
 
     const types = document.createElement('div');
     types.className = 'slot-types';
     for (const t of pkm.types) {
       const pill = document.createElement('span');
       pill.className = 'type-pill';
-      pill.textContent = t;
+      pill.textContent = getTypeName(t);
       pill.style.backgroundColor = TYPE_COLORS[t] ?? '#888';
       types.appendChild(pill);
     }
@@ -487,4 +500,23 @@ export class SortBatchUI {
 
 function formatName(name: string): string {
   return name.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('-');
+}
+
+function buildBadges(pkm: PokemonFeatures): HTMLElement | null {
+  const tags: { label: string; cls: string }[] = [];
+  if (pkm.isStarter)        tags.push({ label: 'Starter',    cls: 'badge--starter'  });
+  if (pkm.isPseudoLegendary)tags.push({ label: 'Pseudo',     cls: 'badge--pseudo'   });
+  if (pkm.isLegendary)      tags.push({ label: 'Legendär',   cls: 'badge--legendary'});
+  if (pkm.isMythical)       tags.push({ label: 'Mysteriös',  cls: 'badge--mythical' });
+  if (tags.length === 0) return null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'badge-row';
+  for (const t of tags) {
+    const b = document.createElement('span');
+    b.className = `pkm-badge ${t.cls}`;
+    b.textContent = t.label;
+    wrap.appendChild(b);
+  }
+  return wrap;
 }

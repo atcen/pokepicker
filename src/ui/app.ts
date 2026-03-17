@@ -8,6 +8,7 @@ import { ONBOARDING_BATCHES, ONBOARDING_COUNT, MIXED_MODE_START_INDEX } from '..
 import { SortBatchUI } from './sorter';
 import { RankingUI } from './ranking';
 import { recordSortResult } from '../stats/db';
+import { SUPPORTED_LANGUAGES, currentLanguage, setLanguage } from '../data/i18n';
 import { CONFIG } from '../config';
 
 const STATE_KEY = 'pokepicker-state';
@@ -63,6 +64,22 @@ export class App {
 
     document.getElementById('undo-btn')?.addEventListener('click', () => this.handleUndo());
     document.getElementById('reset-btn')?.addEventListener('click', () => this.handleReset());
+
+    // Language selector
+    const langSelect = document.getElementById('lang-select') as HTMLSelectElement | null;
+    if (langSelect) {
+      for (const lang of SUPPORTED_LANGUAGES) {
+        const opt = document.createElement('option');
+        opt.value = lang.code;
+        opt.textContent = lang.label;
+        if (lang.code === currentLanguage()) opt.selected = true;
+        langSelect.appendChild(opt);
+      }
+      langSelect.addEventListener('change', () => {
+        setLanguage(langSelect.value);
+        this.renderNextBatch();
+      });
+    }
 
     this.rankingUI = new RankingUI(this.rankingContainer);
 

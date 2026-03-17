@@ -52,8 +52,22 @@ body {
 
 .header-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
+
+.lang-select {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.lang-select:hover, .lang-select:focus { border-color: var(--accent2); }
 
 /* === Progress === */
 #progress-container {
@@ -607,6 +621,29 @@ body {
   80% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* === Pokémon badges === */
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.pkm-badge {
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.badge--starter   { background: rgba(76,175,80,0.25);  color: #81c784; border: 1px solid rgba(76,175,80,0.4); }
+.badge--legendary { background: rgba(245,197,24,0.2);  color: #F5C518; border: 1px solid rgba(245,197,24,0.4); }
+.badge--mythical  { background: rgba(233,69,96,0.2);   color: #f48fb1; border: 1px solid rgba(233,69,96,0.4); }
+.badge--pseudo    { background: rgba(168,184,200,0.15); color: #A8B8C8; border: 1px solid rgba(168,184,200,0.3); }
 
 /* === Onboarding banner === */
 .onboarding-banner {
