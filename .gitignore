@@ -2,3 +2,4 @@ node_modules/
 dist/
 .env
 pokeapi-cache.db
+sprites/
