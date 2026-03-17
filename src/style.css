@@ -123,39 +123,116 @@ body {
   font-weight: 600;
 }
 
-/* === Sort Batch UI === */
-.sorter-title {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 12px;
+/* === Pool + Slot UI === */
+.pool-ui {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Pool area */
+.pool-section {}
+
+.pool-title,
+.slots-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 8px;
 }
 
-.sort-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
+.pool-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 110px;
+  padding: 8px;
+  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius);
+  border: 2px dashed rgba(255,255,255,0.08);
+  transition: border-color 0.15s, background 0.15s;
 }
 
-@media (max-width: 480px) {
-  .sort-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.pool-area.drag-over-pool {
+  border-color: var(--accent2);
+  background: rgba(83,52,131,0.15);
 }
 
+.pool-area.pool-empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+/* Slots */
+.slots-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sort-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 2px dashed rgba(255,255,255,0.15);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  min-width: 120px;
+  min-height: 110px;
+  transition: border-color 0.15s, background 0.15s;
+  flex: 0 0 auto;
+}
+
+.sort-slot.slot-drag-over {
+  border-color: var(--accent);
+  background: rgba(233,69,96,0.12);
+}
+
+.slot-label {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--accent);
+  min-width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.slot-placeholder {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.2);
+  font-style: italic;
+  flex: 1;
+  text-align: center;
+}
+
+/* Cards */
 .pokemon-card {
   background: var(--surface2);
   border-radius: var(--radius);
-  padding: 10px 6px;
+  padding: 8px 6px;
   text-align: center;
   cursor: grab;
   position: relative;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
   box-shadow: var(--shadow);
   border: 2px solid transparent;
   user-select: none;
   -webkit-user-select: none;
+  width: 100px;
+}
+
+.pool-card {
+  flex-shrink: 0;
+}
+
+.slotted-card {
+  width: 88px;
 }
 
 .pokemon-card:hover {
@@ -170,25 +247,45 @@ body {
 }
 
 .pokemon-card.dragging {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: grabbing;
 }
 
-.pokemon-card.drag-over {
+.pokemon-card.card-selected {
   border-color: var(--accent);
-  background: #1e3a6e;
+  box-shadow: 0 0 0 3px rgba(233,69,96,0.35);
+  transform: translateY(-2px);
+}
+
+/* Remove button on slotted cards */
+.slot-remove-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  background: rgba(233,69,96,0.7);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.pokemon-card:hover .slot-remove-btn,
+.pokemon-card:focus-within .slot-remove-btn {
+  opacity: 1;
 }
 
 .position-badge {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  background: var(--accent);
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 10px;
+  display: none; /* no longer used */
 }
 
 .pokemon-sprite {
