@@ -37,6 +37,35 @@ export async function syncWeights(
   }
 }
 
+export interface CorrelationEntry {
+  pokemon_id: number;
+  shared_opponents: number;
+  combined_strength: number;
+}
+
+/**
+ * Fetch item-based correlations for a list of pokemon IDs.
+ * For each ID, returns the top pokemon liked by users who also liked it.
+ * Fires requests in parallel; missing/failed IDs are silently skipped.
+ */
+export async function fetchCorrelations(ids: number[]): Promise<Map<number, CorrelationEntry[]>> {
+  const result = new Map<number, CorrelationEntry[]>();
+  if (ids.length === 0) return result;
+
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/correlations/${id}`);
+      if (!res.ok) return;
+      const data = await res.json() as { sourceId: number; correlations: CorrelationEntry[] };
+      result.set(id, data.correlations);
+    } catch {
+      // non-fatal — backend may be offline
+    }
+  }));
+
+  return result;
+}
+
 /** Fetch cluster centroids from the backend. Returns null if unavailable. */
 export async function fetchClusters(): Promise<ClusterCentroidRow[] | null> {
   try {

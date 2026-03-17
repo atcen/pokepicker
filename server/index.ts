@@ -83,6 +83,21 @@ app.post('/api/stats/sort', async (c) => {
   return c.json({ ok: true });
 });
 
+/** Item-based correlations: pokemon liked by users who also liked :id */
+app.get('/api/correlations/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'invalid id' }, 400);
+
+  type CorrelationRow = { pokemon_id: number; shared_opponents: number; combined_strength: number };
+  const rows = stmts.correlatedPokemon.all(id, id) as CorrelationRow[];
+
+  return c.json(
+    { sourceId: id, correlations: rows },
+    200,
+    { 'Cache-Control': 'max-age=3600' }
+  );
+});
+
 /** Top N most-chosen Pokémon across all users */
 app.get('/api/stats/top', (c) => {
   const n = Math.min(parseInt(c.req.query('n') ?? '50', 10), 200);

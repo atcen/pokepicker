@@ -6,7 +6,8 @@ import { updateWeightsAndPropagate, detectOutliers } from '../rating/weights';
 import { selectNextBatch, computeConfidence, recommendMode } from '../rating/pairing';
 import { ONBOARDING_BATCHES, ONBOARDING_COUNT, MIXED_MODE_START_INDEX, getOnboardingCount } from '../data/onboarding';
 import { matchCluster } from '../rating/cluster-prior';
-import { initSession, syncWeights, fetchClusters } from '../backend/client';
+import { initSession, syncWeights, fetchClusters, fetchCorrelations } from '../backend/client';
+import { applyCorrelationBoosts } from '../rating/correlations';
 import { SortBatchUI } from './sorter';
 import { RankingUI } from './ranking';
 import { recordSortResult } from '../stats/db';
@@ -321,6 +322,11 @@ export class App {
     // Detect outliers
     this.outliers = detectOutliers(newRatings, this.allPokemon, newWeights);
 
+    // Item-based CF: boost unseen pokemon correlated with top-ranked items
+    const topHalf = rankedIds.slice(0, Math.ceil(rankedIds.length / 2));
+    const correlations = await fetchCorrelations(topHalf);
+    const boostedRatings = applyCorrelationBoosts(newRatings, topHalf, correlations);
+
     const history = [result, ...this.state.history].slice(0, CONFIG.HISTORY_LENGTH);
 
     // Advance onboarding if needed
@@ -338,7 +344,7 @@ export class App {
 
     this.state = {
       ...this.state,
-      ratings: newRatings,
+      ratings: boostedRatings,
       weights: newWeights,
       weightHistory,
       history,
