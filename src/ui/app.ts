@@ -316,6 +316,16 @@ export class App {
   }
 
   private handleSkip(): void {
+    if (!this.state) return;
+
+    if (!this.state.onboardingComplete) {
+      const onboardingIndex = this.state.onboardingIndex + 1;
+      const onboardingComplete = onboardingIndex >= ONBOARDING_COUNT;
+      if (onboardingComplete) this.showOnboardingComplete();
+      this.state = { ...this.state, onboardingIndex, onboardingComplete };
+      saveState(this.state);
+    }
+
     this.renderNextBatch();
   }
 
