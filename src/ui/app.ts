@@ -1,10 +1,12 @@
-import type { AppState, PairingMode, PokemonFeatures, Rating, SortResult } from '../types';
+import type { AppState, ClusterCentroidRow, PairingMode, PokemonFeatures, Rating, SortResult } from '../types';
 import { fetchAllPokemon } from '../data/pokeapi';
 import { DEFAULT_WEIGHTS, computePrior } from '../rating/prior';
 import { updateRatingsFromSort } from '../rating/elo';
 import { updateWeightsAndPropagate, detectOutliers } from '../rating/weights';
 import { selectNextBatch, computeConfidence, recommendMode } from '../rating/pairing';
-import { ONBOARDING_BATCHES, ONBOARDING_COUNT, MIXED_MODE_START_INDEX } from '../data/onboarding';
+import { ONBOARDING_BATCHES, ONBOARDING_COUNT, MIXED_MODE_START_INDEX, getOnboardingCount } from '../data/onboarding';
+import { matchCluster } from '../rating/cluster-prior';
+import { initSession, syncWeights, fetchClusters } from '../backend/client';
 import { SortBatchUI } from './sorter';
 import { RankingUI } from './ranking';
 import { recordSortResult } from '../stats/db';
@@ -87,6 +89,9 @@ export class App {
 
     this.rankingUI = new RankingUI(this.rankingContainer);
 
+    // Backend session (fire-and-forget, app works without it)
+    initSession(SESSION_ID).catch(() => {});
+
     const savedState = loadState();
 
     if (savedState && Object.keys(savedState.ratings).length > 0) {
@@ -96,7 +101,8 @@ export class App {
       this.startSortLoop();
     } else {
       await this.loadPokemonData();
-      this.initFreshState();
+      const clusters = await fetchClusters();
+      this.initFreshState(clusters);
       this.startSortLoop();
     }
   }
@@ -127,12 +133,20 @@ export class App {
     }
   }
 
-  private initFreshState(): void {
+  private initFreshState(clusters: ClusterCentroidRow[] | null = null): void {
+    // Resolve cluster match for warm-starting the prior
+    const clusterMatch = clusters ? matchCluster(DEFAULT_WEIGHTS, clusters) : null;
+    const initialWeights = DEFAULT_WEIGHTS;
+
+    // Dynamic onboarding length: fewer batches if we already know the user's
+    // taste from a strong cluster match
+    const effectiveOnboardingCount = getOnboardingCount(clusterMatch?.similarity ?? null);
+
     const ratings: Record<number, Rating> = {};
     for (const pkm of Object.values(this.allPokemon)) {
       ratings[pkm.id] = {
         pokemonId: pkm.id,
-        mu: computePrior(pkm, DEFAULT_WEIGHTS),
+        mu: computePrior(pkm, initialWeights),
         sigma: CONFIG.INITIAL_SIGMA,
         comparisons: 0,
       };
@@ -140,15 +154,16 @@ export class App {
 
     this.state = {
       ratings,
-      weights: DEFAULT_WEIGHTS,
+      weights: initialWeights,
       history: [],
       totalInteractions: 0,
       startedAt: Date.now(),
-      onboardingComplete: false,
+      onboardingComplete: effectiveOnboardingCount === 0,
       onboardingIndex: 0,
       weightHistory: [],
       pairingMode: 'exploration',
       modeAutoSwitch: true,
+      clusterMatch: clusterMatch ?? undefined,
     };
 
     saveState(this.state);
@@ -165,6 +180,15 @@ export class App {
 
     if (!this.state.onboardingComplete) {
       const idx = this.state.onboardingIndex;
+      const effectiveCount = getOnboardingCount(this.state.clusterMatch?.similarity ?? null);
+
+      // If we've reached the effective onboarding count, mark complete
+      if (idx >= effectiveCount) {
+        this.state = { ...this.state, onboardingComplete: true };
+        saveState(this.state);
+        return { ids: selectNextBatch(this.state.pairingMode, this.state.ratings, this.allPokemon, this.state.weights, this.outliers, CONFIG.BATCH_SIZE, this.recentBatchIds), label: null };
+      }
+
       const batch = ONBOARDING_BATCHES[idx];
 
       if (idx >= MIXED_MODE_START_INDEX) {
@@ -259,11 +283,12 @@ export class App {
     if (!label || !this.state || this.state.onboardingComplete) return;
 
     const idx = this.state.onboardingIndex;
+    const effectiveCount = getOnboardingCount(this.state.clusterMatch?.similarity ?? null);
     const banner = document.createElement('div');
     banner.className = 'onboarding-banner';
     banner.innerHTML =
       `<span class="onboarding-label">${label}</span>` +
-      `<span class="onboarding-progress">Einrichtung (${idx + 1}/${ONBOARDING_COUNT}) — ` +
+      `<span class="onboarding-progress">Einrichtung (${idx + 1}/${effectiveCount}) — ` +
       `danach startet deine persönliche Rangliste</span>`;
 
     this.sorterContainer.prepend(banner);
@@ -304,7 +329,8 @@ export class App {
 
     if (!onboardingComplete) {
       onboardingIndex = onboardingIndex + 1;
-      if (onboardingIndex >= ONBOARDING_COUNT) {
+      const effectiveCount = getOnboardingCount(this.state.clusterMatch?.similarity ?? null);
+      if (onboardingIndex >= effectiveCount) {
         onboardingComplete = true;
         this.showOnboardingComplete();
       }
@@ -324,6 +350,15 @@ export class App {
     saveState(this.state);
     recordSortResult(result, SESSION_ID).catch(() => {});
     this.updateModeIfNeeded();
+
+    // Sync weights to backend (silent fail)
+    syncWeights(
+      SESSION_ID,
+      this.state.weights,
+      this.state.totalInteractions,
+      this.state.onboardingComplete
+    ).catch(() => {});
+
     this.renderNextBatch();
   }
 
@@ -332,7 +367,8 @@ export class App {
 
     if (!this.state.onboardingComplete) {
       const onboardingIndex = this.state.onboardingIndex + 1;
-      const onboardingComplete = onboardingIndex >= ONBOARDING_COUNT;
+      const effectiveCount = getOnboardingCount(this.state.clusterMatch?.similarity ?? null);
+      const onboardingComplete = onboardingIndex >= effectiveCount;
       if (onboardingComplete) this.showOnboardingComplete();
       this.state = { ...this.state, onboardingIndex, onboardingComplete };
       saveState(this.state);
