@@ -192,6 +192,13 @@ export class App {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
+  private preloadSprites(ids: number[]): void {
+    for (const id of ids) {
+      const pkm = this.allPokemon[id];
+      if (pkm) new Image().src = pkm.sprite;
+    }
+  }
+
   private renderNextBatch(): void {
     if (!this.state) return;
 
@@ -203,6 +210,9 @@ export class App {
     );
 
     const batchPokemon = batchIds.map((id) => this.allPokemon[id]).filter(Boolean);
+
+    // Preload sprites for current batch so they appear instantly
+    this.preloadSprites(batchIds);
 
     if (this.sorterUI) this.sorterUI.destroy();
 
