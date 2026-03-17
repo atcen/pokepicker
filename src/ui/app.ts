@@ -418,9 +418,11 @@ export class App {
 
   private setMode(mode: PairingMode): void {
     if (!this.state) return;
-    this.state = { ...this.state, pairingMode: mode };
+    // Manual selection disables auto-switch so the choice sticks
+    this.state = { ...this.state, pairingMode: mode, modeAutoSwitch: false };
     saveState(this.state);
-    this.renderModeBar();
+    this.recentBatchIds = [];
+    this.renderNextBatch();
   }
 
   private updateModeIfNeeded(): void {
