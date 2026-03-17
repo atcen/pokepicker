@@ -123,170 +123,270 @@ body {
   font-weight: 600;
 }
 
-/* === Pool + Slot UI === */
+/* ============================================================
+   Pool + Slots UI
+   ============================================================ */
+
 .pool-ui {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
 
-/* Pool area */
-.pool-section {}
-
-.pool-title,
-.slots-title {
-  font-size: 0.75rem;
+/* Section heading */
+.pool-label {
+  font-size: 0.68rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   color: var(--text-muted);
-  font-weight: 600;
   margin-bottom: 8px;
 }
 
+/* ── Pool ── */
 .pool-area {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  min-height: 110px;
-  padding: 8px;
-  background: rgba(255,255,255,0.03);
-  border-radius: var(--radius);
+  gap: 10px;
+  justify-content: center;
+  min-height: 116px;
+  padding: 12px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 12px;
   border: 2px dashed rgba(255,255,255,0.08);
   transition: border-color 0.15s, background 0.15s;
 }
 
-.pool-area.drag-over-pool {
+.pool-area.pool-drag-over {
   border-color: var(--accent2);
-  background: rgba(83,52,131,0.15);
+  background: rgba(83,52,131,0.18);
 }
 
-.pool-area.pool-empty {
+.pool-area.pool-done {
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-style: italic;
+  color: #4caf50;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-color: rgba(76,175,80,0.3);
+  background: rgba(76,175,80,0.05);
 }
 
-/* Slots */
-.slots-area {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.sort-slot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255,255,255,0.03);
-  border: 2px dashed rgba(255,255,255,0.15);
-  border-radius: var(--radius);
-  padding: 6px 8px;
-  min-width: 120px;
-  min-height: 110px;
-  transition: border-color 0.15s, background 0.15s;
-  flex: 0 0 auto;
-}
-
-.sort-slot.slot-drag-over {
-  border-color: var(--accent);
-  background: rgba(233,69,96,0.12);
-}
-
-.slot-label {
-  font-size: 1.1rem;
-  font-weight: 800;
-  color: var(--accent);
-  min-width: 28px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.slot-placeholder {
-  font-size: 0.7rem;
-  color: rgba(255,255,255,0.2);
-  font-style: italic;
-  flex: 1;
-  text-align: center;
-}
-
-/* Cards */
-.pokemon-card {
-  background: var(--surface2);
-  border-radius: var(--radius);
-  padding: 8px 6px;
+/* Pool card — compact vertical */
+.pool-card {
+  width: 84px;
+  background: #0d2848;
+  border-radius: 10px;
+  padding: 8px 4px 6px;
   text-align: center;
   cursor: grab;
-  position: relative;
-  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
-  box-shadow: var(--shadow);
-  border: 2px solid transparent;
+  border: 2px solid rgba(255,255,255,0.07);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.15s;
   user-select: none;
   -webkit-user-select: none;
-  width: 100px;
-}
-
-.pool-card {
   flex-shrink: 0;
 }
 
-.slotted-card {
-  width: 88px;
+.pool-card:hover {
+  transform: translateY(-4px) scale(1.04);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.55);
+  border-color: rgba(255,255,255,0.2);
 }
 
-.pokemon-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  border-color: var(--accent2);
-}
-
-.pokemon-card:focus {
+.pool-card:focus {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
-.pokemon-card.dragging {
-  opacity: 0.3;
-  cursor: grabbing;
-}
+.pool-card.card-dragging { opacity: 0.2; cursor: grabbing; }
 
-.pokemon-card.card-selected {
+.pool-card.pool-card--selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(233,69,96,0.35);
-  transform: translateY(-2px);
+  box-shadow: 0 0 0 3px rgba(233,69,96,0.4), 0 8px 20px rgba(0,0,0,0.5);
+  transform: translateY(-4px) scale(1.04);
 }
 
-/* Remove button on slotted cards */
-.slot-remove-btn {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  background: rgba(233,69,96,0.7);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 18px;
-  height: 18px;
-  font-size: 0.75rem;
-  line-height: 1;
-  cursor: pointer;
+.pool-sprite {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  display: block;
+  margin: 0 auto 4px;
+}
+
+.pool-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.pool-types {
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+/* ── Slots list ── */
+.slots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.slot-row {
+  display: flex;
+  align-items: stretch;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255,255,255,0.07);
+  background: rgba(0,0,0,0.18);
+  overflow: hidden;
+  min-height: 62px;
+  transition: border-color 0.15s, background 0.15s;
+  cursor: default;
+}
+
+.slot-row--over {
+  border-color: var(--accent);
+  background: rgba(233,69,96,0.09);
+}
+
+.slot-row--filled {
+  background: rgba(15,52,96,0.45);
+  border-color: rgba(255,255,255,0.12);
+}
+
+/* Rank badge column */
+.slot-rank {
+  width: 48px;
+  min-width: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  opacity: 0;
-  transition: opacity 0.15s;
+  font-size: 0.85rem;
+  font-weight: 900;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
 }
 
-.pokemon-card:hover .slot-remove-btn,
-.pokemon-card:focus-within .slot-remove-btn {
-  opacity: 1;
+.slot-rank--gold   { color: #F5C518; background: rgba(245,197,24,0.08); }
+.slot-rank--silver { color: #A8B8C8; background: rgba(168,184,200,0.06); }
+.slot-rank--bronze { color: #C8885A; background: rgba(200,136,90,0.07); }
+.slot-rank--default { color: rgba(255,255,255,0.25); }
+
+/* Empty state */
+.slot-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 0.76rem;
+  color: rgba(255,255,255,0.16);
+  font-style: italic;
+  cursor: default;
 }
 
-.position-badge {
-  display: none; /* no longer used */
+/* Filled: horizontal pokemon row */
+.slot-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 4px 7px 12px;
+  cursor: grab;
+  transition: background 0.12s;
+  min-width: 0;
 }
+
+.slot-content:hover { background: rgba(255,255,255,0.04); }
+.slot-content.card-dragging { opacity: 0.2; cursor: grabbing; }
+
+.slot-content.slot-content--selected {
+  background: rgba(233,69,96,0.1);
+}
+
+.slot-sprite {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.slot-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.slot-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slot-types {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.slot-meta {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+/* Remove button */
+.slot-remove {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.2);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 12px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+
+.slot-remove:hover {
+  color: var(--accent);
+  background: rgba(233,69,96,0.1);
+}
+
+/* ============================================================
+   Shared type pill + legacy sprite/name (used by ranking.ts)
+   ============================================================ */
+.pokemon-sprite {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.pokemon-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.position-badge { display: none; }
+
+/* Type pill (shared) */
 
 .pokemon-sprite {
   width: 80px;
@@ -351,6 +451,12 @@ body {
 }
 
 .btn-primary:hover { background: #c73c50; }
+
+.btn-primary--dim {
+  background: rgba(233,69,96,0.35);
+  cursor: not-allowed;
+}
+.btn-primary--dim:hover { background: rgba(233,69,96,0.35); transform: none; }
 
 .btn-secondary {
   background: var(--surface2);

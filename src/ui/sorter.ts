@@ -11,16 +11,11 @@ export class SortBatchUI {
   private onSkip: () => void;
   private pokemon: PokemonFeatures[] = [];
 
-  // Pool: indices of pokemon not yet placed
   private pool: number[] = [];
-  // Slots: pokemon indices in ranked positions, null = empty
   private slots: (number | null)[] = [];
 
-  // Drag state
   private dragSource: DragSource | null = null;
   private touchClone: HTMLElement | null = null;
-
-  // Click-to-place selection
   private selected: DragSource | null = null;
 
   constructor(
@@ -47,65 +42,254 @@ export class SortBatchUI {
     const wrapper = document.createElement('div');
     wrapper.className = 'pool-ui';
 
-    // --- Pool section ---
-    const poolSection = document.createElement('div');
-    poolSection.className = 'pool-section';
+    wrapper.appendChild(this.renderPool());
+    wrapper.appendChild(this.renderSlots());
+    wrapper.appendChild(this.renderActions());
 
-    const poolTitle = document.createElement('div');
-    poolTitle.className = 'pool-title';
-    poolTitle.textContent = 'Pool';
-    poolSection.appendChild(poolTitle);
+    this.container.appendChild(wrapper);
+  }
 
-    const poolArea = document.createElement('div');
-    poolArea.className = 'pool-area';
-    poolArea.dataset.zone = 'pool';
+  // ─── Pool ─────────────────────────────────────────────────────────────────
+
+  private renderPool(): HTMLElement {
+    const section = document.createElement('div');
+
+    const label = document.createElement('div');
+    label.className = 'pool-label';
+    label.textContent = 'Pool';
+    section.appendChild(label);
+
+    const area = document.createElement('div');
+    area.className = this.pool.length === 0 ? 'pool-area pool-done' : 'pool-area';
+    area.dataset.zone = 'pool';
 
     if (this.pool.length === 0) {
-      poolArea.classList.add('pool-empty');
-      poolArea.textContent = 'Alle Pokémon platziert';
+      area.textContent = '✓ Alle Pokémon platziert';
     } else {
-      for (const pokemonIdx of this.pool) {
-        poolArea.appendChild(this.createPoolCard(pokemonIdx));
+      for (const idx of this.pool) {
+        area.appendChild(this.createPoolCard(idx));
       }
     }
 
-    // Pool is also a drop target (to return cards from slots)
-    poolArea.addEventListener('dragover', (e) => {
+    area.addEventListener('dragover', (e) => {
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      poolArea.classList.add('drag-over-pool');
+      area.classList.add('pool-drag-over');
     });
-    poolArea.addEventListener('dragleave', () => poolArea.classList.remove('drag-over-pool'));
-    poolArea.addEventListener('drop', (e) => {
+    area.addEventListener('dragleave', () => area.classList.remove('pool-drag-over'));
+    area.addEventListener('drop', (e) => {
       e.preventDefault();
-      poolArea.classList.remove('drag-over-pool');
+      area.classList.remove('pool-drag-over');
       if (this.dragSource?.zone === 'slot') {
         this.moveToPool(this.dragSource.slotIndex);
       }
     });
 
-    poolSection.appendChild(poolArea);
-    wrapper.appendChild(poolSection);
+    section.appendChild(area);
+    return section;
+  }
 
-    // --- Slots section ---
-    const slotsSection = document.createElement('div');
-    slotsSection.className = 'slots-section';
+  private createPoolCard(pokemonIdx: number): HTMLElement {
+    const pkm = this.pokemon[pokemonIdx];
+    const card = document.createElement('div');
+    card.className = 'pool-card';
+    card.setAttribute('draggable', 'true');
+    card.setAttribute('tabindex', '0');
 
-    const slotsTitle = document.createElement('div');
-    slotsTitle.className = 'slots-title';
-    slotsTitle.textContent = 'Meine Rangliste';
-    slotsSection.appendChild(slotsTitle);
+    const isSelected =
+      this.selected?.zone === 'pool' && this.selected.pokemonIdx === pokemonIdx;
+    if (isSelected) card.classList.add('pool-card--selected');
 
-    const slotsArea = document.createElement('div');
-    slotsArea.className = 'slots-area';
+    const img = document.createElement('img');
+    img.src = pkm.sprite;
+    img.alt = pkm.name;
+    img.className = 'pool-sprite';
+    img.loading = 'lazy';
+    card.appendChild(img);
+
+    const name = document.createElement('div');
+    name.className = 'pool-name';
+    name.textContent = formatName(pkm.name);
+    card.appendChild(name);
+
+    const types = document.createElement('div');
+    types.className = 'pool-types';
+    for (const t of pkm.types) {
+      const pill = document.createElement('span');
+      pill.className = 'type-pill';
+      pill.textContent = t;
+      pill.style.backgroundColor = TYPE_COLORS[t] ?? '#888';
+      types.appendChild(pill);
+    }
+    card.appendChild(types);
+
+    card.addEventListener('dragstart', (e) => {
+      this.dragSource = { zone: 'pool', pokemonIdx };
+      card.classList.add('card-dragging');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      this.dragSource = null;
+      card.classList.remove('card-dragging');
+    });
+
+    card.addEventListener('touchstart', (e) =>
+      this.onTouchStart(e, { zone: 'pool', pokemonIdx }), { passive: false });
+    card.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+    card.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+
+    card.addEventListener('click', () => this.handlePoolCardClick(pokemonIdx));
+
+    return card;
+  }
+
+  // ─── Slots ────────────────────────────────────────────────────────────────
+
+  private renderSlots(): HTMLElement {
+    const section = document.createElement('div');
+
+    const label = document.createElement('div');
+    label.className = 'pool-label';
+    label.textContent = 'Meine Rangliste';
+    section.appendChild(label);
+
+    const list = document.createElement('div');
+    list.className = 'slots-list';
 
     for (let i = 0; i < this.slots.length; i++) {
-      slotsArea.appendChild(this.createSlot(i));
+      list.appendChild(this.createSlotRow(i));
     }
-    slotsSection.appendChild(slotsArea);
-    wrapper.appendChild(slotsSection);
 
-    // --- Actions ---
+    section.appendChild(list);
+    return section;
+  }
+
+  private createSlotRow(slotIndex: number): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'slot-row';
+    row.dataset.slotIndex = String(slotIndex);
+
+    // Rank badge
+    const rank = document.createElement('div');
+    rank.className = `slot-rank slot-rank--${slotIndex < 3 ? ['gold', 'silver', 'bronze'][slotIndex] : 'default'}`;
+    rank.textContent = `#${slotIndex + 1}`;
+    row.appendChild(rank);
+
+    const content = this.slots[slotIndex];
+
+    if (content !== null) {
+      row.classList.add('slot-row--filled');
+      row.appendChild(this.createSlotContent(content, slotIndex));
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'slot-empty';
+      ph.textContent = 'Pokémon hierher ziehen';
+      row.appendChild(ph);
+    }
+
+    // Drop events on whole row
+    row.addEventListener('dragover', (e) => {
+      if (!this.dragSource) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      row.classList.add('slot-row--over');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('slot-row--over'));
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      row.classList.remove('slot-row--over');
+      if (this.dragSource) this.dropOnSlot(slotIndex);
+    });
+
+    // Click on empty area
+    row.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.slot-content') || target.closest('.slot-remove')) return;
+      if (content === null) this.handleEmptySlotClick(slotIndex);
+    });
+
+    return row;
+  }
+
+  private createSlotContent(pokemonIdx: number, slotIndex: number): HTMLElement {
+    const pkm = this.pokemon[pokemonIdx];
+    const content = document.createElement('div');
+    content.className = 'slot-content';
+    content.setAttribute('draggable', 'true');
+
+    const isSelected =
+      this.selected?.zone === 'slot' && this.selected.slotIndex === slotIndex;
+    if (isSelected) content.classList.add('slot-content--selected');
+
+    const img = document.createElement('img');
+    img.src = pkm.sprite;
+    img.alt = pkm.name;
+    img.className = 'slot-sprite';
+    img.loading = 'lazy';
+    content.appendChild(img);
+
+    const info = document.createElement('div');
+    info.className = 'slot-info';
+
+    const name = document.createElement('div');
+    name.className = 'slot-name';
+    name.textContent = formatName(pkm.name);
+    info.appendChild(name);
+
+    const types = document.createElement('div');
+    types.className = 'slot-types';
+    for (const t of pkm.types) {
+      const pill = document.createElement('span');
+      pill.className = 'type-pill';
+      pill.textContent = t;
+      pill.style.backgroundColor = TYPE_COLORS[t] ?? '#888';
+      types.appendChild(pill);
+    }
+    info.appendChild(types);
+
+    const meta = document.createElement('div');
+    meta.className = 'slot-meta';
+    meta.textContent = `#${pkm.id} · Gen ${pkm.generation}`;
+    info.appendChild(meta);
+
+    content.appendChild(info);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'slot-remove';
+    removeBtn.textContent = '×';
+    removeBtn.title = 'Zurück in Pool';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.moveToPool(slotIndex);
+    });
+    content.appendChild(removeBtn);
+
+    content.addEventListener('dragstart', (e) => {
+      this.dragSource = { zone: 'slot', slotIndex };
+      content.classList.add('card-dragging');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    });
+    content.addEventListener('dragend', () => {
+      this.dragSource = null;
+      content.classList.remove('card-dragging');
+    });
+
+    content.addEventListener('touchstart', (e) =>
+      this.onTouchStart(e, { zone: 'slot', slotIndex }), { passive: false });
+    content.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+    content.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+
+    content.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.slot-remove')) return;
+      this.handleSlotCardClick(slotIndex);
+    });
+
+    return content;
+  }
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+
+  private renderActions(): HTMLElement {
     const actions = document.createElement('div');
     actions.className = 'sorter-actions';
 
@@ -115,9 +299,13 @@ export class SortBatchUI {
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'btn btn-primary';
-    confirmBtn.textContent = allFilled ? 'Bestätigen' : `Bestätigen (${filled}/${total})`;
+    if (!allFilled) {
+      confirmBtn.classList.add('btn-primary--dim');
+      confirmBtn.textContent = `Bestätigen · ${filled} / ${total}`;
+    } else {
+      confirmBtn.textContent = 'Bestätigen';
+    }
     confirmBtn.disabled = !allFilled;
-    if (!allFilled) confirmBtn.classList.add('btn-disabled');
     confirmBtn.addEventListener('click', () => this.handleSubmit());
 
     const skipBtn = document.createElement('button');
@@ -127,167 +315,10 @@ export class SortBatchUI {
 
     actions.appendChild(confirmBtn);
     actions.appendChild(skipBtn);
-    wrapper.appendChild(actions);
-
-    this.container.appendChild(wrapper);
+    return actions;
   }
 
-  // ─── Card creation ────────────────────────────────────────────────────────
-
-  private createPoolCard(pokemonIdx: number): HTMLElement {
-    const pkm = this.pokemon[pokemonIdx];
-    const card = this.buildCard(pkm);
-    card.classList.add('pool-card');
-
-    const isSelected =
-      this.selected?.zone === 'pool' && this.selected.pokemonIdx === pokemonIdx;
-    if (isSelected) card.classList.add('card-selected');
-
-    // Drag
-    card.setAttribute('draggable', 'true');
-    card.addEventListener('dragstart', (e) => {
-      this.dragSource = { zone: 'pool', pokemonIdx };
-      card.classList.add('dragging');
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-    });
-    card.addEventListener('dragend', () => {
-      this.dragSource = null;
-      card.classList.remove('dragging');
-    });
-
-    // Touch
-    card.addEventListener('touchstart', (e) => this.onTouchStart(e, { zone: 'pool', pokemonIdx }), { passive: false });
-    card.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
-    card.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
-
-    // Click-to-select
-    card.addEventListener('click', () => this.handlePoolCardClick(pokemonIdx));
-
-    return card;
-  }
-
-  private createSlot(slotIndex: number): HTMLElement {
-    const slot = document.createElement('div');
-    slot.className = 'sort-slot';
-    slot.dataset.slotIndex = String(slotIndex);
-
-    const label = document.createElement('span');
-    label.className = 'slot-label';
-    label.textContent = `#${slotIndex + 1}`;
-    slot.appendChild(label);
-
-    const content = this.slots[slotIndex];
-
-    if (content !== null) {
-      const pkm = this.pokemon[content];
-      const card = this.buildCard(pkm);
-      card.classList.add('slotted-card');
-
-      const isSelected =
-        this.selected?.zone === 'slot' && this.selected.slotIndex === slotIndex;
-      if (isSelected) card.classList.add('card-selected');
-
-      // Remove button
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'slot-remove-btn';
-      removeBtn.textContent = '×';
-      removeBtn.title = 'Zurück in Pool';
-      removeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.moveToPool(slotIndex);
-      });
-      card.appendChild(removeBtn);
-
-      // Drag from slot
-      card.setAttribute('draggable', 'true');
-      card.addEventListener('dragstart', (e) => {
-        this.dragSource = { zone: 'slot', slotIndex };
-        card.classList.add('dragging');
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-      });
-      card.addEventListener('dragend', () => {
-        this.dragSource = null;
-        card.classList.remove('dragging');
-      });
-
-      // Touch from slot
-      card.addEventListener('touchstart', (e) => this.onTouchStart(e, { zone: 'slot', slotIndex }), { passive: false });
-      card.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
-      card.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
-
-      // Click on occupied slot
-      card.addEventListener('click', () => this.handleSlotCardClick(slotIndex));
-
-      slot.appendChild(card);
-    } else {
-      const placeholder = document.createElement('div');
-      placeholder.className = 'slot-placeholder';
-      placeholder.textContent = 'hier ablegen';
-      slot.appendChild(placeholder);
-    }
-
-    // Slot as drop target
-    slot.addEventListener('dragover', (e) => {
-      if (!this.dragSource) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      slot.classList.add('slot-drag-over');
-    });
-    slot.addEventListener('dragleave', () => slot.classList.remove('slot-drag-over'));
-    slot.addEventListener('drop', (e) => {
-      e.preventDefault();
-      slot.classList.remove('slot-drag-over');
-      if (!this.dragSource) return;
-      this.dropOnSlot(slotIndex);
-    });
-
-    // Click on empty slot (for click-to-place)
-    slot.addEventListener('click', (e) => {
-      if (e.target === slot || (e.target as HTMLElement).classList.contains('slot-placeholder')) {
-        this.handleEmptySlotClick(slotIndex);
-      }
-    });
-
-    return slot;
-  }
-
-  private buildCard(pkm: PokemonFeatures): HTMLElement {
-    const card = document.createElement('div');
-    card.className = 'pokemon-card';
-    card.setAttribute('tabindex', '0');
-
-    const img = document.createElement('img');
-    img.src = pkm.sprite;
-    img.alt = pkm.name;
-    img.className = 'pokemon-sprite';
-    img.loading = 'lazy';
-    card.appendChild(img);
-
-    const name = document.createElement('div');
-    name.className = 'pokemon-name';
-    name.textContent = formatName(pkm.name);
-    card.appendChild(name);
-
-    const typesEl = document.createElement('div');
-    typesEl.className = 'pokemon-types';
-    for (const type of pkm.types) {
-      const pill = document.createElement('span');
-      pill.className = 'type-pill';
-      pill.textContent = type;
-      pill.style.backgroundColor = TYPE_COLORS[type] ?? '#888';
-      typesEl.appendChild(pill);
-    }
-    card.appendChild(typesEl);
-
-    const meta = document.createElement('div');
-    meta.className = 'pokemon-meta';
-    meta.textContent = `#${pkm.id} · Gen ${pkm.generation}`;
-    card.appendChild(meta);
-
-    return card;
-  }
-
-  // ─── Drag logic ───────────────────────────────────────────────────────────
+  // ─── Drag/drop logic ──────────────────────────────────────────────────────
 
   private dropOnSlot(targetSlotIndex: number): void {
     if (!this.dragSource) return;
@@ -299,12 +330,11 @@ export class SortBatchUI {
       this.pool = this.pool.filter((i) => i !== pokemonIdx);
       if (displaced !== null) this.pool.push(displaced);
     } else {
-      const sourceSlot = this.dragSource.slotIndex;
-      if (sourceSlot === targetSlotIndex) return;
-      // Swap
+      const src = this.dragSource.slotIndex;
+      if (src === targetSlotIndex) return;
       const temp = this.slots[targetSlotIndex];
-      this.slots[targetSlotIndex] = this.slots[sourceSlot];
-      this.slots[sourceSlot] = temp;
+      this.slots[targetSlotIndex] = this.slots[src];
+      this.slots[src] = temp;
     }
 
     this.dragSource = null;
@@ -312,22 +342,20 @@ export class SortBatchUI {
   }
 
   private moveToPool(slotIndex: number): void {
-    const pokemonIdx = this.slots[slotIndex];
-    if (pokemonIdx === null) return;
-    this.pool.push(pokemonIdx);
+    const idx = this.slots[slotIndex];
+    if (idx === null) return;
+    this.pool.push(idx);
     this.slots[slotIndex] = null;
     this.dragSource = null;
     this.renderUI();
   }
 
-  // ─── Click-to-place logic ─────────────────────────────────────────────────
+  // ─── Click-to-place ───────────────────────────────────────────────────────
 
   private handlePoolCardClick(pokemonIdx: number): void {
     if (this.selected?.zone === 'pool' && this.selected.pokemonIdx === pokemonIdx) {
-      // Deselect
       this.selected = null;
     } else if (this.selected?.zone === 'slot') {
-      // Move slot card back to pool, place new card from pool into that slot
       const slotIndex = this.selected.slotIndex;
       const displaced = this.slots[slotIndex];
       this.slots[slotIndex] = pokemonIdx;
@@ -335,7 +363,6 @@ export class SortBatchUI {
       if (displaced !== null) this.pool.push(displaced);
       this.selected = null;
     } else {
-      // Select this pool card
       this.selected = { zone: 'pool', pokemonIdx };
     }
     this.renderUI();
@@ -343,10 +370,8 @@ export class SortBatchUI {
 
   private handleSlotCardClick(slotIndex: number): void {
     if (this.selected?.zone === 'slot' && this.selected.slotIndex === slotIndex) {
-      // Deselect
       this.selected = null;
     } else if (this.selected?.zone === 'pool') {
-      // Place selected pool card into this slot
       const pokemonIdx = this.selected.pokemonIdx;
       const displaced = this.slots[slotIndex];
       this.slots[slotIndex] = pokemonIdx;
@@ -354,14 +379,12 @@ export class SortBatchUI {
       if (displaced !== null) this.pool.push(displaced);
       this.selected = null;
     } else if (this.selected?.zone === 'slot') {
-      // Swap two slots
       const src = this.selected.slotIndex;
       const temp = this.slots[slotIndex];
       this.slots[slotIndex] = this.slots[src];
       this.slots[src] = temp;
       this.selected = null;
     } else {
-      // Select this slot card
       this.selected = { zone: 'slot', slotIndex };
     }
     this.renderUI();
@@ -375,7 +398,6 @@ export class SortBatchUI {
       this.selected = null;
       this.renderUI();
     } else if (this.selected?.zone === 'slot') {
-      // Move slot card to this empty slot
       const src = this.selected.slotIndex;
       this.slots[slotIndex] = this.slots[src];
       this.slots[src] = null;
@@ -384,18 +406,17 @@ export class SortBatchUI {
     }
   }
 
-  // ─── Touch drag ──────────────────────────────────────────────────────────
+  // ─── Touch ────────────────────────────────────────────────────────────────
 
   private onTouchStart(e: TouchEvent, source: DragSource): void {
     e.preventDefault();
     this.dragSource = source;
     this.selected = null;
 
-    const card = e.currentTarget as HTMLElement;
-    const clone = card.cloneNode(true) as HTMLElement;
+    const el = e.currentTarget as HTMLElement;
+    const clone = el.cloneNode(true) as HTMLElement;
     clone.style.cssText =
-      'position:fixed;pointer-events:none;opacity:0.85;z-index:9999;' +
-      `width:${card.offsetWidth}px;`;
+      `position:fixed;pointer-events:none;opacity:0.85;z-index:9999;width:${el.offsetWidth}px;border-radius:10px;`;
     document.body.appendChild(clone);
     this.touchClone = clone;
 
@@ -409,39 +430,27 @@ export class SortBatchUI {
     const t = e.touches[0];
     this.moveTouchClone(t.clientX, t.clientY);
 
-    // Highlight drop targets
-    this.clearDragOverHighlights();
+    this.clearDropHighlights();
     const el = document.elementFromPoint(t.clientX, t.clientY);
-    const slot = el?.closest('.sort-slot') as HTMLElement | null;
-    const pool = el?.closest('.pool-area') as HTMLElement | null;
-    if (slot) slot.classList.add('slot-drag-over');
-    if (pool) pool.classList.add('drag-over-pool');
+    el?.closest('.slot-row')?.classList.add('slot-row--over');
+    el?.closest('.pool-area')?.classList.add('pool-drag-over');
   }
 
   private onTouchEnd(e: TouchEvent): void {
-    if (this.touchClone) {
-      document.body.removeChild(this.touchClone);
-      this.touchClone = null;
-    }
-    this.clearDragOverHighlights();
+    if (this.touchClone) { document.body.removeChild(this.touchClone); this.touchClone = null; }
+    this.clearDropHighlights();
 
     const t = e.changedTouches[0];
     const el = document.elementFromPoint(t.clientX, t.clientY);
 
-    const slotEl = el?.closest('.sort-slot') as HTMLElement | null;
-    const poolEl = el?.closest('.pool-area') as HTMLElement | null;
-
-    if (slotEl && this.dragSource) {
-      const targetSlotIndex = parseInt(slotEl.dataset.slotIndex ?? '-1', 10);
-      if (targetSlotIndex >= 0) {
-        this.dropOnSlot(targetSlotIndex);
-        return;
-      }
+    const slotRow = el?.closest('.slot-row') as HTMLElement | null;
+    if (slotRow && this.dragSource) {
+      const idx = parseInt(slotRow.dataset.slotIndex ?? '-1', 10);
+      if (idx >= 0) { this.dropOnSlot(idx); return; }
     }
 
-    if (poolEl && this.dragSource?.zone === 'slot') {
-      this.moveToPool(this.dragSource.slotIndex);
-      return;
+    if (el?.closest('.pool-area') && this.dragSource?.zone === 'slot') {
+      this.moveToPool(this.dragSource.slotIndex); return;
     }
 
     this.dragSource = null;
@@ -453,38 +462,29 @@ export class SortBatchUI {
     this.touchClone.style.top = y - this.touchClone.offsetHeight / 2 + 'px';
   }
 
-  private clearDragOverHighlights(): void {
-    this.container
-      .querySelectorAll('.slot-drag-over, .drag-over-pool')
-      .forEach((el) => el.classList.remove('slot-drag-over', 'drag-over-pool'));
+  private clearDropHighlights(): void {
+    this.container.querySelectorAll('.slot-row--over, .pool-drag-over')
+      .forEach((el) => el.classList.remove('slot-row--over', 'pool-drag-over'));
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
 
   private handleSubmit(): void {
-    const allFilled = this.slots.every((s) => s !== null);
-    if (!allFilled) return;
-
-    const rankedIds = (this.slots as number[]).map((idx) => this.pokemon[idx].id);
+    if (!this.slots.every((s) => s !== null)) return;
+    const rankedIds = (this.slots as number[]).map((i) => this.pokemon[i].id);
     this.container.classList.add('submitting');
     setTimeout(() => {
       this.container.classList.remove('submitting');
       this.onSubmit(rankedIds);
-    }, 300);
+    }, 250);
   }
 
   destroy(): void {
     this.container.innerHTML = '';
-    if (this.touchClone) {
-      document.body.removeChild(this.touchClone);
-      this.touchClone = null;
-    }
+    if (this.touchClone) { document.body.removeChild(this.touchClone); this.touchClone = null; }
   }
 }
 
 function formatName(name: string): string {
-  return name
-    .split('-')
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join('-');
+  return name.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('-');
 }
