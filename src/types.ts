@@ -35,6 +35,12 @@ export interface SortResult {
   rankedIds: number[];
 }
 
+export type PairingMode =
+  | 'exploration'  // Standard: maximaler Information Gain über alle Items
+  | 'refinement'   // Nur Top-N gegeneinander, enge mu-Abstände
+  | 'challenge'    // Aufsteiger mit hohem sigma gegen etablierte Top-Items
+  | 'onboarding';  // Gescriptete Batches (Phase 1)
+
 export interface AppState {
   ratings: Record<number, Rating>;
   weights: FeatureWeights;
@@ -44,4 +50,6 @@ export interface AppState {
   onboardingComplete: boolean;
   onboardingIndex: number;
   weightHistory: FeatureWeights[];
+  pairingMode: PairingMode;
+  modeAutoSwitch: boolean;
 }

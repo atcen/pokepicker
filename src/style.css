@@ -645,6 +645,69 @@ body {
 .badge--mythical  { background: rgba(233,69,96,0.2);   color: #f48fb1; border: 1px solid rgba(233,69,96,0.4); }
 .badge--pseudo    { background: rgba(168,184,200,0.15); color: #A8B8C8; border: 1px solid rgba(168,184,200,0.3); }
 
+/* === Mode bar === */
+.mode-bar {
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-wrap: wrap;
+}
+
+.mode-indicator {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+.mode-btn-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--surface2);
+  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.mode-btn:hover {
+  background: #1a3a60;
+  color: var(--text);
+}
+
+.mode-btn--active {
+  background: var(--accent2);
+  color: var(--text);
+  border-color: var(--accent2);
+}
+
+.mode-auto-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.mode-auto-label input[type='checkbox'] {
+  accent-color: var(--accent2);
+  cursor: pointer;
+}
+
 /* === Onboarding banner === */
 .onboarding-banner {
   background: linear-gradient(135deg, #1a3a60, var(--accent2));
