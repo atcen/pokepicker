@@ -7,7 +7,7 @@ export interface OnboardingBatch {
 
 export const ONBOARDING_BATCHES: OnboardingBatch[] = [
   // ─── Gen 1 ────────────────────────────────────────────────────────────────
-  { id: 'starters_gen1',   label: 'Sortiere die Kanto-Starter',    pokemonIds: [1, 4, 7],                         targetFeatures: ['types', 'generation'] },
+  { id: 'starters_gen1',   label: 'Sortiere die Kanto-Starter',    pokemonIds: [1, 4, 7, 25],                         targetFeatures: ['types', 'generation'] },
   { id: 'legendary_gen1',  label: 'Sortiere die Kanto-Legendären',  pokemonIds: [144, 145, 146, 150, 151],         targetFeatures: ['legendary', 'mythical', 'types'] },
   // ─── Gen 2 ────────────────────────────────────────────────────────────────
   { id: 'starters_gen2',   label: 'Sortiere die Johto-Starter',    pokemonIds: [152, 155, 158],                   targetFeatures: ['types', 'generation'] },
