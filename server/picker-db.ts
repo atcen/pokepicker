@@ -109,12 +109,12 @@ export const pickerStmts = {
 
   getCompletedCount: pickerDb.prepare(`
     SELECT COUNT(*) as n FROM user_weights
-    WHERE completed_at IS NOT NULL AND interaction_count > 20
+    WHERE completed_at IS NOT NULL
   `),
 
   getCompletedWeights: pickerDb.prepare(`
     SELECT id, weights FROM user_weights
-    WHERE completed_at IS NOT NULL AND interaction_count > 20
+    WHERE completed_at IS NOT NULL
   `),
 
   getAllCentroids: pickerDb.prepare(`
