@@ -40,4 +40,7 @@ export interface AppState {
   history: SortResult[];
   totalInteractions: number;
   startedAt: number;
+  onboardingComplete: boolean;
+  onboardingIndex: number;
+  weightHistory: FeatureWeights[];
 }

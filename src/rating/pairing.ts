@@ -1,4 +1,6 @@
-import type { PokemonFeatures, Rating } from '../types';
+import type { PokemonFeatures, Rating, FeatureWeights } from '../types';
+import { computePrior } from './prior';
+import { computeWeightDelta } from './weights';
 import { CONFIG } from '../config';
 
 export function selectNextBatch(
@@ -13,50 +15,35 @@ export function selectNextBatch(
 
   if (allIds.length === 0) return [];
 
-  // Score each pokemon for how useful it would be in the next batch
   const scored = allIds
     .filter((id) => !recentSet.has(id))
     .map((id) => {
       const r = ratings[id];
       const isOutlier = outliers.includes(id);
 
-      // Exploration score: high sigma = uncertain = need more data
       const explorationScore = r.sigma / CONFIG.INITIAL_SIGMA;
-
-      // Exploitation score: high mu with low sigma = established favorite
-      const exploitationScore = r.mu > CONFIG.BASE_RATING ? (1 - r.sigma / CONFIG.INITIAL_SIGMA) * 0.3 : 0;
-
-      // Outlier bonus
+      const exploitationScore =
+        r.mu > CONFIG.BASE_RATING ? (1 - r.sigma / CONFIG.INITIAL_SIGMA) * 0.3 : 0;
       const outlierBonus = isOutlier ? 0.5 : 0;
 
-      const total = explorationScore + exploitationScore + outlierBonus;
-
-      return { id, score: total };
+      return { id, score: explorationScore + exploitationScore + outlierBonus };
     });
 
   scored.sort((a, b) => b.score - a.score);
 
   const selected: number[] = [];
 
-  // Always include at least 1 highly uncertain pokemon
-  const highUncertain = scored.find((s) => {
-    const r = ratings[s.id];
-    return r.sigma > CONFIG.INITIAL_SIGMA * 0.7;
-  });
-  if (highUncertain) {
-    selected.push(highUncertain.id);
-  }
+  const highUncertain = scored.find((s) => ratings[s.id].sigma > CONFIG.INITIAL_SIGMA * 0.7);
+  if (highUncertain) selected.push(highUncertain.id);
 
-  // Always include at least 1 known favorite (low sigma, high mu)
-  const knownFav = scored.find((s) => {
-    const r = ratings[s.id];
-    return r.sigma < CONFIG.INITIAL_SIGMA * 0.5 && r.mu > CONFIG.BASE_RATING + 100 && !selected.includes(s.id);
-  });
-  if (knownFav) {
-    selected.push(knownFav.id);
-  }
+  const knownFav = scored.find(
+    (s) =>
+      ratings[s.id].sigma < CONFIG.INITIAL_SIGMA * 0.5 &&
+      ratings[s.id].mu > CONFIG.BASE_RATING + 100 &&
+      !selected.includes(s.id)
+  );
+  if (knownFav) selected.push(knownFav.id);
 
-  // Add outliers
   for (const outlierId of outliers) {
     if (selected.length >= batchSize) break;
     if (!selected.includes(outlierId) && !recentSet.has(outlierId)) {
@@ -64,17 +51,12 @@ export function selectNextBatch(
     }
   }
 
-  // Fill with mixed ratings (nearby mu = informative comparison)
   const remaining = scored.filter((s) => !selected.includes(s.id));
-
-  // Try to group by similar ratings for informative comparisons
   if (selected.length > 0) {
     const anchorMu = ratings[selected[0]].mu;
-    remaining.sort((a, b) => {
-      const distA = Math.abs(ratings[a.id].mu - anchorMu);
-      const distB = Math.abs(ratings[b.id].mu - anchorMu);
-      return distA - distB;
-    });
+    remaining.sort(
+      (a, b) => Math.abs(ratings[a.id].mu - anchorMu) - Math.abs(ratings[b.id].mu - anchorMu)
+    );
   }
 
   for (const s of remaining) {
@@ -82,7 +64,6 @@ export function selectNextBatch(
     selected.push(s.id);
   }
 
-  // If still not enough, pick from recent ids too
   if (selected.length < batchSize) {
     for (const id of allIds) {
       if (selected.length >= batchSize) break;
@@ -93,33 +74,122 @@ export function selectNextBatch(
   return selected.slice(0, batchSize);
 }
 
-export function isRankingSettled(
+export interface ConfidenceInfo {
+  confidence: number;
+  weightStability: number;
+  topNSettled: boolean;
+  label: string;
+}
+
+// Maximum expected total weight delta across 5 batches in normal usage
+const MAX_EXPECTED_DELTA = 300;
+
+/**
+ * Composite confidence metric with three components:
+ *
+ * 1. Weight stability (40%): how much have feature weights changed recently?
+ * 2. Prior coverage (30%): does the prior correlate with empirical ratings?
+ * 3. Top-N empirical stability (30%): how many top-N have low sigma?
+ */
+export function computeConfidence(
   ratings: Record<number, Rating>,
-  topN: number
-): { settled: boolean; confidence: number } {
+  allPokemon: Record<number, PokemonFeatures>,
+  weights: FeatureWeights,
+  weightHistory: FeatureWeights[],
+  topN: number = CONFIG.SETTLED_TOP_N
+): ConfidenceInfo {
+  // --- Component 1: Weight stability ---
+  const weightStability = computeWeightStability(weights, weightHistory);
+
+  // --- Component 2: Prior coverage ---
+  const priorCoverage = computePriorCoverage(ratings, allPokemon, weights);
+
+  // --- Component 3: Top-N empirical stability ---
   const sorted = Object.values(ratings)
     .sort((a, b) => b.mu - a.mu)
     .slice(0, topN);
 
-  if (sorted.length < topN) {
-    return { settled: false, confidence: 0 };
+  const topNSettledFraction =
+    sorted.length === 0
+      ? 0
+      : sorted.filter((r) => r.sigma <= CONFIG.SETTLED_SIGMA).length / Math.min(sorted.length, topN);
+
+  const topNSettled = topNSettledFraction >= 0.9;
+
+  // --- Composite ---
+  const confidence =
+    0.4 * weightStability + 0.3 * priorCoverage + 0.3 * topNSettledFraction;
+
+  const confidencePct = Math.round(confidence * 100);
+  const seenCount = Object.values(ratings).filter((r) => r.comparisons > 0).length;
+
+  let label: string;
+  if (confidence < 0.2) {
+    label = `Rangliste aufbaut... ${seenCount} gesehen`;
+  } else if (confidence < 0.5) {
+    label = `Profil kalibriert sich (${confidencePct}%)`;
+  } else if (confidence < 0.8) {
+    label = `Rangliste zuverlässig (${confidencePct}%)`;
+  } else {
+    label = `Top ${topN} stabil (${confidencePct}%)`;
   }
 
-  const settledCount = sorted.filter((r) => r.sigma <= CONFIG.SETTLED_SIGMA).length;
-  const confidence = settledCount / topN;
+  return { confidence, weightStability, topNSettled, label };
+}
 
-  // Check if top-N are clearly separated (no sigma overlap between consecutive pairs)
-  let overlaps = 0;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const upper = sorted[i];
-    const lower = sorted[i + 1];
-    if (upper.mu - upper.sigma < lower.mu + lower.sigma) {
-      overlaps++;
-    }
+function computeWeightStability(
+  current: FeatureWeights,
+  history: FeatureWeights[]
+): number {
+  if (history.length === 0) return 0;
+
+  // Average delta vs each historical snapshot (older = more weight to delta)
+  let totalDelta = 0;
+  for (const past of history) {
+    totalDelta += computeWeightDelta(current, past);
+  }
+  const avgDelta = totalDelta / history.length;
+
+  return Math.max(0, Math.min(1, 1 - avgDelta / MAX_EXPECTED_DELTA));
+}
+
+function computePriorCoverage(
+  ratings: Record<number, Rating>,
+  allPokemon: Record<number, PokemonFeatures>,
+  weights: FeatureWeights
+): number {
+  const seen = Object.values(ratings).filter(
+    (r) => r.comparisons >= 2 && allPokemon[r.pokemonId]
+  );
+
+  if (seen.length < 5) return 0;
+
+  const priors = seen.map((r) => computePrior(allPokemon[r.pokemonId], weights));
+  const empirical = seen.map((r) => r.mu);
+
+  const corr = pearsonCorrelation(priors, empirical);
+  // Correlation is [-1, 1]; map to [0, 1], treating negative as 0
+  return Math.max(0, corr);
+}
+
+function pearsonCorrelation(xs: number[], ys: number[]): number {
+  const n = xs.length;
+  if (n < 2) return 0;
+
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+
+  let num = 0;
+  let denX = 0;
+  let denY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX;
+    const dy = ys[i] - meanY;
+    num += dx * dy;
+    denX += dx * dx;
+    denY += dy * dy;
   }
 
-  const overlapRatio = overlaps / (sorted.length - 1);
-  const settled = confidence >= 0.9 && overlapRatio < 0.1;
-
-  return { settled, confidence };
+  if (denX === 0 || denY === 0) return 0;
+  return num / Math.sqrt(denX * denY);
 }

@@ -2,8 +2,9 @@ import type { AppState, PokemonFeatures, Rating, SortResult } from '../types';
 import { fetchAllPokemon } from '../data/pokeapi';
 import { DEFAULT_WEIGHTS, computePrior } from '../rating/prior';
 import { updateRatingsFromSort } from '../rating/elo';
-import { updateWeights, detectOutliers } from '../rating/weights';
-import { selectNextBatch, isRankingSettled } from '../rating/pairing';
+import { updateWeightsAndPropagate, detectOutliers } from '../rating/weights';
+import { selectNextBatch, computeConfidence } from '../rating/pairing';
+import { ONBOARDING_BATCHES, ONBOARDING_COUNT, MIXED_MODE_START_INDEX } from '../data/onboarding';
 import { SortBatchUI } from './sorter';
 import { RankingUI } from './ranking';
 import { recordSortResult } from '../stats/db';
@@ -11,6 +12,7 @@ import { CONFIG } from '../config';
 
 const STATE_KEY = 'pokepicker-state';
 const SESSION_ID = generateSessionId();
+const WEIGHT_HISTORY_MAX = 5;
 
 function generateSessionId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -20,7 +22,12 @@ function loadState(): AppState | null {
   try {
     const raw = localStorage.getItem(STATE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as AppState;
+    const state = JSON.parse(raw) as AppState;
+    // Migrate old saves that lack the new fields
+    if (state.onboardingComplete === undefined) state.onboardingComplete = true;
+    if (state.onboardingIndex === undefined) state.onboardingIndex = ONBOARDING_COUNT;
+    if (state.weightHistory === undefined) state.weightHistory = [];
+    return state;
   } catch {
     return null;
   }
@@ -54,16 +61,11 @@ export class App {
     this.statsEl = document.getElementById('stats-bar')!;
     this.progressContainer = document.getElementById('progress-container')!;
 
-    const undoBtn = document.getElementById('undo-btn');
-    undoBtn?.addEventListener('click', () => this.handleUndo());
+    document.getElementById('undo-btn')?.addEventListener('click', () => this.handleUndo());
+    document.getElementById('reset-btn')?.addEventListener('click', () => this.handleReset());
 
-    const resetBtn = document.getElementById('reset-btn');
-    resetBtn?.addEventListener('click', () => this.handleReset());
-
-    // Setup ranking UI
     this.rankingUI = new RankingUI(this.rankingContainer);
 
-    // Load existing state
     const savedState = loadState();
 
     if (savedState && Object.keys(savedState.ratings).length > 0) {
@@ -88,17 +90,14 @@ export class App {
 
   private async loadPokemonData(): Promise<void> {
     this.progressContainer.style.display = 'flex';
-
     const progressBar = document.getElementById('progress-bar')!;
     const progressText = document.getElementById('progress-text')!;
 
     try {
       const pokemonList = await fetchAllPokemon((loaded, total) => {
-        const pct = Math.round((loaded / total) * 100);
-        progressBar.style.width = `${pct}%`;
+        progressBar.style.width = `${Math.round((loaded / total) * 100)}%`;
         progressText.textContent = `Lade Pokémon... ${loaded}/${total}`;
       });
-
       for (const pkm of pokemonList) {
         this.allPokemon[pkm.id] = pkm;
       }
@@ -109,12 +108,10 @@ export class App {
 
   private initFreshState(): void {
     const ratings: Record<number, Rating> = {};
-
     for (const pkm of Object.values(this.allPokemon)) {
-      const prior = computePrior(pkm, DEFAULT_WEIGHTS);
       ratings[pkm.id] = {
         pokemonId: pkm.id,
-        mu: prior,
+        mu: computePrior(pkm, DEFAULT_WEIGHTS),
         sigma: CONFIG.INITIAL_SIGMA,
         comparisons: 0,
       };
@@ -126,6 +123,9 @@ export class App {
       history: [],
       totalInteractions: 0,
       startedAt: Date.now(),
+      onboardingComplete: false,
+      onboardingIndex: 0,
+      weightHistory: [],
     };
 
     saveState(this.state);
@@ -135,75 +135,156 @@ export class App {
     this.renderNextBatch();
   }
 
-  private renderNextBatch(): void {
-    if (!this.state) return;
+  // ─── Batch selection ──────────────────────────────────────────────────────
 
-    const batchIds = selectNextBatch(
+  private getBatchIds(): { ids: number[]; label: string | null } {
+    if (!this.state) return { ids: [], label: null };
+
+    if (!this.state.onboardingComplete) {
+      const idx = this.state.onboardingIndex;
+      const batch = ONBOARDING_BATCHES[idx];
+
+      if (idx >= MIXED_MODE_START_INDEX) {
+        // Mixed mode: scripted IDs (4) + 2 free picks
+        const scriptedIds = batch.pokemonIds.filter((id) => this.allPokemon[id]);
+        const exclude = [...scriptedIds, ...this.recentBatchIds];
+        const freeIds = selectNextBatch(
+          this.state.ratings,
+          this.allPokemon,
+          this.outliers,
+          2,
+          exclude
+        );
+        return { ids: [...scriptedIds, ...freeIds], label: batch.label };
+      }
+
+      const validIds = batch.pokemonIds.filter((id) => this.allPokemon[id]);
+      return { ids: validIds, label: batch.label };
+    }
+
+    // Free mode
+    const ids = selectNextBatch(
       this.state.ratings,
       this.allPokemon,
       this.outliers,
       CONFIG.BATCH_SIZE,
       this.recentBatchIds
     );
+    return { ids, label: null };
+  }
 
-    this.recentBatchIds = [...batchIds, ...this.recentBatchIds].slice(0, CONFIG.BATCH_SIZE * 2);
+  // ─── Render ───────────────────────────────────────────────────────────────
 
-    const batchPokemon = batchIds
-      .map((id) => this.allPokemon[id])
-      .filter(Boolean);
+  private renderNextBatch(): void {
+    if (!this.state) return;
 
-    if (this.sorterUI) {
-      this.sorterUI.destroy();
-    }
+    const { ids: batchIds, label } = this.getBatchIds();
+
+    this.recentBatchIds = [...batchIds, ...this.recentBatchIds].slice(
+      0,
+      CONFIG.BATCH_SIZE * 2
+    );
+
+    const batchPokemon = batchIds.map((id) => this.allPokemon[id]).filter(Boolean);
+
+    if (this.sorterUI) this.sorterUI.destroy();
 
     this.sorterUI = new SortBatchUI(
       this.sorterContainer,
       (rankedIds) => this.handleSort(rankedIds),
       () => this.handleSkip()
     );
-
     this.sorterUI.render(batchPokemon);
 
-    // Update ranking display
-    const settledInfo = isRankingSettled(this.state.ratings, CONFIG.SETTLED_TOP_N);
-    this.rankingUI!.update(this.state.ratings, this.allPokemon, settledInfo);
+    // Show onboarding label if applicable
+    this.renderOnboardingBanner(label);
 
-    this.updateStats();
+    // Update ranking
+    const confInfo = computeConfidence(
+      this.state.ratings,
+      this.allPokemon,
+      this.state.weights,
+      this.state.weightHistory
+    );
+    this.rankingUI!.update(this.state.ratings, this.allPokemon, {
+      settled: confInfo.topNSettled,
+      confidence: confInfo.confidence,
+    });
+
+    this.updateStats(confInfo.label);
   }
+
+  private renderOnboardingBanner(label: string | null): void {
+    const existing = this.sorterContainer.querySelector('.onboarding-banner');
+    if (existing) existing.remove();
+
+    if (!label || !this.state || this.state.onboardingComplete) return;
+
+    const idx = this.state.onboardingIndex;
+    const banner = document.createElement('div');
+    banner.className = 'onboarding-banner';
+    banner.innerHTML =
+      `<span class="onboarding-label">${label}</span>` +
+      `<span class="onboarding-progress">Einrichtung (${idx + 1}/${ONBOARDING_COUNT}) — ` +
+      `danach startet deine persönliche Rangliste</span>`;
+
+    this.sorterContainer.prepend(banner);
+  }
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
   private async handleSort(rankedIds: number[]): Promise<void> {
     if (!this.state) return;
 
-    const result: SortResult = {
-      timestamp: Date.now(),
-      rankedIds,
-    };
+    const result: SortResult = { timestamp: Date.now(), rankedIds };
 
-    // Update ratings
-    const newRatings = updateRatingsFromSort(rankedIds, this.state.ratings);
+    // Update Elo ratings for directly seen Pokémon
+    const eloRatings = updateRatingsFromSort(rankedIds, this.state.ratings);
 
-    // Update weights
-    const newWeights = updateWeights(result, this.allPokemon, newRatings, this.state.weights);
+    // Update feature weights and propagate to all Pokémon
+    const { weights: newWeights, ratings: newRatings } = updateWeightsAndPropagate(
+      result,
+      this.allPokemon,
+      eloRatings,
+      this.state.weights
+    );
+
+    // Track weight history (last WEIGHT_HISTORY_MAX snapshots)
+    const weightHistory = [
+      ...this.state.weightHistory,
+      this.state.weights,
+    ].slice(-WEIGHT_HISTORY_MAX);
 
     // Detect outliers
     this.outliers = detectOutliers(newRatings, this.allPokemon, newWeights);
 
-    // Update history (for undo)
     const history = [result, ...this.state.history].slice(0, CONFIG.HISTORY_LENGTH);
+
+    // Advance onboarding if needed
+    let onboardingComplete = this.state.onboardingComplete;
+    let onboardingIndex = this.state.onboardingIndex;
+
+    if (!onboardingComplete) {
+      onboardingIndex = onboardingIndex + 1;
+      if (onboardingIndex >= ONBOARDING_COUNT) {
+        onboardingComplete = true;
+        this.showOnboardingComplete();
+      }
+    }
 
     this.state = {
       ...this.state,
       ratings: newRatings,
       weights: newWeights,
+      weightHistory,
       history,
       totalInteractions: this.state.totalInteractions + 1,
+      onboardingComplete,
+      onboardingIndex,
     };
 
     saveState(this.state);
-
-    // Record stats in background
     recordSortResult(result, SESSION_ID).catch(() => {});
-
     this.renderNextBatch();
   }
 
@@ -219,14 +300,12 @@ export class App {
 
     const [_lastResult, ...remainingHistory] = this.state.history;
 
-    // Re-compute ratings from remaining history
-    // Start from scratch with priors
+    // Re-compute ratings from priors + remaining history
     const ratings: Record<number, Rating> = {};
     for (const pkm of Object.values(this.allPokemon)) {
-      const prior = computePrior(pkm, this.state.weights);
       ratings[pkm.id] = {
         pokemonId: pkm.id,
-        mu: prior,
+        mu: computePrior(pkm, this.state.weights),
         sigma: CONFIG.INITIAL_SIGMA,
         comparisons: 0,
       };
@@ -237,11 +316,22 @@ export class App {
       currentRatings = updateRatingsFromSort(result.rankedIds, currentRatings);
     }
 
+    // Roll back onboarding if we were still in it
+    let onboardingComplete = this.state.onboardingComplete;
+    let onboardingIndex = this.state.onboardingIndex;
+    if (!onboardingComplete || onboardingIndex < ONBOARDING_COUNT) {
+      onboardingIndex = Math.max(0, onboardingIndex - 1);
+      onboardingComplete = false;
+    }
+
     this.state = {
       ...this.state,
       ratings: currentRatings,
       history: remainingHistory,
+      weightHistory: this.state.weightHistory.slice(0, -1),
       totalInteractions: Math.max(0, this.state.totalInteractions - 1),
+      onboardingComplete,
+      onboardingIndex,
     };
 
     saveState(this.state);
@@ -258,15 +348,20 @@ export class App {
     this.startSortLoop();
   }
 
-  private updateStats(): void {
+  // ─── UI helpers ───────────────────────────────────────────────────────────
+
+  private showOnboardingComplete(): void {
+    const banner = document.createElement('div');
+    banner.className = 'welcome-back-banner';
+    banner.textContent = 'Einrichtung abgeschlossen! Deine persönliche Rangliste startet jetzt.';
+    document.body.prepend(banner);
+    setTimeout(() => banner.remove(), 5000);
+  }
+
+  private updateStats(confidenceLabel: string): void {
     if (!this.state) return;
-
     const elapsed = Math.round((Date.now() - this.state.startedAt) / 60000);
-    const settledInfo = isRankingSettled(this.state.ratings, CONFIG.SETTLED_TOP_N);
-    const confidence = Math.round(settledInfo.confidence * 100);
-
     this.statsEl.textContent =
-      `${this.state.totalInteractions} Interaktionen · ${elapsed} Min · ` +
-      `Top ${CONFIG.SETTLED_TOP_N}: ${confidence}% Konfidenz`;
+      `${this.state.totalInteractions} Interaktionen · ${elapsed} Min · ${confidenceLabel}`;
   }
 }
