@@ -1,5 +1,21 @@
 import { db, stmts } from './db';
 import type { PokemonFeatures } from '../src/types';
+import fs from 'fs';
+import path from 'path';
+
+export const SPRITES_DIR = path.join(process.cwd(), 'sprites');
+if (!fs.existsSync(SPRITES_DIR)) fs.mkdirSync(SPRITES_DIR, { recursive: true });
+
+async function downloadSprite(url: string, id: number): Promise<void> {
+  const dest = path.join(SPRITES_DIR, `${id}.png`);
+  if (fs.existsSync(dest)) return;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`sprite fetch ${r.status}`);
+    const buf = await r.arrayBuffer();
+    fs.writeFileSync(dest, Buffer.from(buf));
+  } catch { /* keep external url as fallback */ }
+}
 
 const POKEMON_COUNT = 1025;
 const BATCH = 20;
@@ -119,12 +135,16 @@ async function fetchAndStorePokemon(id: number): Promise<void> {
     } catch { /* ignore, use default */ }
   }
 
+  const externalSprite = raw.sprites.other?.['official-artwork']?.front_default
+    ?? raw.sprites.front_default
+    ?? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+
+  await downloadSprite(externalSprite, id);
+
   const features: PokemonFeatures = {
     id,
     name: raw.name,
-    sprite: raw.sprites.other?.['official-artwork']?.front_default
-      ?? raw.sprites.front_default
-      ?? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`,
+    sprite: `/sprites/${id}.png`,
     types: raw.types.map(t => t.type.name),
     generation: parseGen(species.generation?.name ?? 'generation-i'),
     evoLineId: evoInfo.baseId,

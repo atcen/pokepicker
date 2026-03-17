@@ -4,6 +4,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:3001',
+      '/sprites': 'http://localhost:3001',
     },
   },
 });

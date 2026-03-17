@@ -1,8 +1,10 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { warmCache, getWarmupProgress, getAllFeatures, getAllNames, getAllTypeNames } from './cache';
+import { warmCache, getWarmupProgress, getAllFeatures, getAllNames, getAllTypeNames, SPRITES_DIR } from './cache';
 import { db, stmts } from './db';
+import fs from 'fs';
+import path from 'path';
 
 const app = new Hono();
 app.use('*', cors());
@@ -24,6 +26,21 @@ app.get('/api/pokemon', (c) => {
 app.get('/api/status', (c) => {
   const p = getWarmupProgress();
   return c.json({ cached: p.done, total: p.total, complete: p.done >= p.total });
+});
+
+// ─── Sprite serving ───────────────────────────────────────────────────────
+
+app.get('/sprites/:id', (c) => {
+  const id = c.req.param('id').replace(/[^0-9]/g, '');
+  const filePath = path.join(SPRITES_DIR, `${id}.png`);
+  if (!fs.existsSync(filePath)) return c.notFound();
+  const data = fs.readFileSync(filePath);
+  return new Response(data, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
 });
 
 // ─── Cross-user stats ─────────────────────────────────────────────────────
